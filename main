@@ -1,24 +1,3 @@
-/*
- * ============================================================================
- *  SNAKE GAME  -  DSA Project (C++)   [simplified version]
- * ============================================================================
- *  DATA STRUCTURES (all written from scratch, no STL containers):
- *    Array ........ game board grid, leaderboard array, history pointer array
- *    Doubly LL .... Snake body            (add head / remove tail)
- *    Singly LL .... Game history, admin accounts
- *    Stack ........ Replay moves, iterative DFS
- *    Queue ........ BFS
- *    Tree (BST) ... Player database       (insert / search / delete / inorder)
- *    BFS .......... Shortest path from snake head to food
- *    DFS .......... Which cells the snake can reach (food spawns only there)
- *    Searching .... BST search, linear search/filter over history
- *    Sorting ...... Quick Sort (leaderboard), Insertion Sort (history)
- *
- *  BUILD:  g++ -std=c++11 -O2 snake_simple.cpp -o snake
- *  KEYS:   Arrows / WASD = move,  P = pause,  Q = quit
- * ============================================================================
- */
-
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -33,46 +12,54 @@
 
 using namespace std;
 
-// ============================================================================
-//  1. TERMINAL LAYER  (the only platform-specific part)
-// ============================================================================
 enum { K_UP = 1001, K_DOWN, K_LEFT, K_RIGHT };
 
 namespace Term {
     void init() {
-        SetConsoleOutputCP(CP_UTF8); // for printing special characters
+        SetConsoleOutputCP(CP_UTF8);
         HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
         DWORD mode = 0;
         GetConsoleMode(h, &mode);
-        SetConsoleMode(h, mode | 0x0004);              // enable ANSI colours
-        system("mode con: cols=100 lines=32");          // window big enough for the board
+        SetConsoleMode(h, mode | 0x0004);       
+        system("mode con: cols=100 lines=32");        
     }
-    void clearScreen() {                               // wipe the whole console
+    void clearScreen() {                       
         cout << flush; 
         system("cls");
     }
-    int readKey() {                                    // 0 = no key pressed
+    int readKey() {                             
         if (!_kbhit()) return 0;
         int c = _getch();
         if (c == 0 || c == 224) {
             switch (_getch()) {
-                case 72: return K_UP;    case 80: return K_DOWN;
-                case 75: return K_LEFT;  case 77: return K_RIGHT;
+                case 72: return K_UP;    
+                case 80: return K_DOWN;
+                case 75: return K_LEFT;  
+                case 77: return K_RIGHT;
             }
             return 0;
         }
         return (c == '\r') ? '\n' : c;
     }
-    void flushInput() { while (_kbhit()) _getch(); }
-    void sleepMs(int ms) { Sleep(ms); }
-    void beep(int freq, int ms) { Beep(freq, ms); }
+    void flushInput() { 
+        while (_kbhit()) 
+        _getch(); 
+    }
+    void sleepMs(int ms) { 
+        Sleep(ms); 
+    }
+    void beep(int freq, int ms) { 
+        Beep(freq, ms); 
+    }
 
-    // Gameplay refresh: jump to the top-left and overwrite the previous frame.
-    void gameHome() { cout << "\033[H" << flush; }
-    void shutdown() { cout << "\033[0m\033[?25h" << flush; }
+    void gameHome() { 
+        cout << "\033[H" << flush; 
+    }
+    void shutdown() { 
+        cout << "\033[0m\033[?25h" << flush; 
+    }
 }
 
-// ANSI colours
 #define C_RESET  "\033[0m"
 #define C_CYAN   "\033[1;36m"
 #define C_YELLOW "\033[1;33m"
@@ -81,193 +68,252 @@ namespace Term {
 #define C_GREY   "\033[90m"
 #define C_WHITE  "\033[1;97m"
 
-// ============================================================================
-//  2. SMALL HELPERS
-// ============================================================================
-static string rep(const string& s, int n) { string r; for (int i = 0; i < n; i++) r += s; return r; }
-static int visibleLen(const string& s) {               // characters on screen (UTF-8 aware)
-    int n = 0;
-    for (size_t i = 0; i < s.size(); i++) if (((unsigned char)s[i] & 0xC0) != 0x80) n++;
-    return n;
+
+static string rep(string s, int n) { 
+    string r; 
+    for (int i = 0; i < n; i++) 
+    r += s; 
+    return r; 
 }
-static unsigned long long hashStr(const string& s) {   // simple password hash (djb2)
+
+static unsigned long long hashStr(string s) {   
     unsigned long long h = 5381;
-    for (size_t i = 0; i < s.size(); i++) h = h * 33 + (unsigned char)s[i];
+    for (size_t i = 0; i < s.size(); i++) 
+    h = h * 33 + (unsigned char)s[i];
     return h;
 }
-static bool validName(const string& s) {               // letters, digits, underscore; max 15
-    if (s.empty() || s.size() > 15) return false;
+static bool validName(string s) {            
+    if (s.empty() || s.size() > 15) 
+    return false;
     for (size_t i = 0; i < s.size(); i++)
-        if (!isalnum((unsigned char)s[i]) && s[i] != '_') return false;
+        if (!isalnum((unsigned char)s[i]) && s[i] != '_') 
+        return false;
     return true;
 }
 
-// ============================================================================
-//  3. STACK  (linked list, from scratch)
-// ============================================================================
 template <class T>
 class Stack {
-    struct Node { T val; Node* next; };
+    struct Node { 
+        T val; 
+        Node* next; 
+    };
     Node* topNode;
     int count;
 public:
     Stack() : topNode(nullptr), count(0) {}
-    ~Stack() { T tmp; while (pop(tmp)) {} }
 
-    void push(const T& v) { Node* n = new Node; n->val = v; n->next = topNode; topNode = n; count++; }
+    void push(T v) { 
+        Node* n = new Node; 
+        n->val = v; 
+        n->next = topNode; 
+        topNode = n; 
+        count++; 
+    }
     bool pop(T& out) {
-        if (!topNode) return false;
+        if (!topNode) 
+        return false;
         Node* n = topNode;
-        out = n->val; topNode = n->next;
-        delete n; count--;
+        out = n->val; 
+        topNode = n->next;
+        delete n; 
+        count--;
         return true;
     }
-    int size() const { return count; }
+    int size() { 
+        return count; 
+    }
 };
 
-// ============================================================================
-//  4. QUEUE  (linked list, from scratch)
-// ============================================================================
+
 template <class T>
 class Queue {
-    struct Node { T val; Node* next; };
+    struct Node { 
+        T val; 
+        Node* next; 
+    };
     Node *front, *back;
 public:
     Queue() : front(nullptr), back(nullptr) {}
-    ~Queue() { T tmp; while (dequeue(tmp)) {} }
+    ~Queue() { 
+        T tmp; 
+        while (dequeue(tmp)) {} 
+    }
 
-    void enqueue(const T& v) {
-        Node* n = new Node; n->val = v; n->next = nullptr;
-        if (back) back->next = n; else front = n;
+    void enqueue(T v) {
+        Node* n = new Node; 
+        n->val = v; 
+        n->next = nullptr;
+        if (back) 
+        back->next = n; 
+        else 
+        front = n;
         back = n;
     }
     bool dequeue(T& out) {
-        if (!front) return false;
+        if (!front) 
+        return false;
         Node* n = front;
-        out = n->val; front = n->next;
-        if (!front) back = nullptr;
+        out = n->val; 
+        front = n->next;
+        if (!front) 
+        back = nullptr;
         delete n;
         return true;
     }
 };
 
-// ============================================================================
-//  5. GAME CONSTANTS
-// ============================================================================
 const int ROWS = 16, COLS = 30;
 enum CellType { EMPTY, SNAKE, FOOD };
 enum Dir { UP, RIGHT, DOWN, LEFT };
 const int DR[4] = { -1, 0, 1, 0 };
 const int DC[4] = { 0, 1, 0, -1 };
-const long long TARGET = 1099511627776LL;              // 2^40
-const long long SURVIVE_BONUS = TARGET / 2;            // leaderboard bonus per survived game
+const long long TARGET = 1099511627776LL;             
+const long long SURVIVE_BONUS = TARGET / 2;          
 enum Result { RES_LOST, RES_SURVIVED, RES_QUIT };
 
-// name, starting length, starting delay (ms), speed-up per food (ms), fastest delay (ms),
-// segments gained per food
+
 struct Difficulty { const char* name; int startLen, startDelay, accel, minDelay, grow; };
 const Difficulty DIFFS[3] = {
     { "EASY",   3, 150, 12, 60, 2 },
     { "MEDIUM", 4, 100, 15, 40, 3 },
     { "HARD",   6,  70, 20, 25, 4 }
 };
-static const char* resultName(int r) { return r == RES_LOST ? "Lost" : (r == RES_SURVIVED ? "Survived" : "Quit"); }
-static string diffName(int d) { return (d >= 0 && d < 3) ? DIFFS[d].name : "?"; }
-static bool inBoard(int r, int c) { return r >= 0 && r < ROWS && c >= 0 && c < COLS; }
+static const char* resultName(int r) { 
+    return r == RES_LOST ? "Lost" : (r == RES_SURVIVED ? "Survived" : "Quit"); 
+}
+static string diffName(int d) { 
+    return (d >= 0 && d < 3) ? DIFFS[d].name : "?"; 
+}
+static bool inBoard(int r, int c) { 
+    return r >= 0 && r < ROWS && c >= 0 && c < COLS; 
+}
 
-struct Cell { int r, c; };
+struct Cell { 
+    int r, c; 
+};
 
-// ============================================================================
-//  6. SNAKE  -  DOUBLY LINKED LIST
-//     head = front of the snake, tail = end.  Moving = new head + remove tail.
-// ============================================================================
-struct SnakeNode { int r, c; SnakeNode *prev, *next; };
+struct SnakeNode { 
+    int r, c; 
+    SnakeNode *prev, *next; 
+};
 
 class Snake {
     SnakeNode *head, *tail;
     int len;
 public:
     Snake() : head(nullptr), tail(nullptr), len(0) {}
-    ~Snake() { clear(); }
+    ~Snake() { 
+        clear(); 
+    }
 
     void addHead(int r, int c) {
         SnakeNode* n = new SnakeNode;
-        n->r = r; n->c = c; n->prev = nullptr; n->next = head;
+        n->r = r; 
+        n->c = c; 
+        n->prev = nullptr; 
+        n->next = head;
         if (head) head->prev = n;
         head = n;
         if (!tail) tail = n;
         len++;
     }
     void removeTail(int& r, int& c) {
-        if (!tail) return;
+        if (!tail) 
+        return;
         SnakeNode* old = tail;
-        r = old->r; c = old->c;
-        tail = old->prev;                              // the "prev" pointer makes this O(1)
-        if (tail) tail->next = nullptr; else head = nullptr;
-        delete old; len--;
+        r = old->r; 
+        c = old->c;
+        tail = old->prev;                             
+        if (tail) 
+        tail->next = nullptr; 
+        else 
+        head = nullptr;
+        delete old; 
+        len--;
     }
-    bool contains(int r, int c) const {
-        for (SnakeNode* p = head; p; p = p->next) if (p->r == r && p->c == c) return true;
+    bool contains(int r, int c) {
+        for (SnakeNode* p = head; p; p = p->next) 
+        if (p->r == r && p->c == c) 
+        return true;
         return false;
     }
-    void clear() { int r, c; while (tail) removeTail(r, c); }
-    int headR() const { return head ? head->r : -1; }
-    int headC() const { return head ? head->c : -1; }
-    int tailR() const { return tail ? tail->r : -1; }
-    int tailC() const { return tail ? tail->c : -1; }
-    int length() const { return len; }
+    void clear() { 
+        int r, c; 
+        while (tail) 
+        removeTail(r, c); 
+    }
+    int headR() { 
+        return head ? head->r : -1; 
+    }
+    int headC() { 
+        return head ? head->c : -1; 
+    }
+    int tailR() { 
+        return tail ? tail->r : -1; 
+    }
+    int tailC() { 
+        return tail ? tail->c : -1; 
+    }
+    int length() {
+         return len; 
+        }
 };
 
-// ============================================================================
-//  7. GRAPH ALGORITHMS ON THE BOARD
-//     Every cell is a vertex; neighbouring cells that are not snake are edges.
-// ============================================================================
+
 namespace Graph {
-    // BFS (uses our Queue): number of steps of the shortest path, or -1.
     int shortestPath(const int b[ROWS][COLS], int sr, int sc, int tr, int tc) {
         int dist[ROWS][COLS];
-        for (int i = 0; i < ROWS; i++) for (int j = 0; j < COLS; j++) dist[i][j] = -1;
+        for (int i = 0; i < ROWS; i++) 
+        for (int j = 0; j < COLS; j++) 
+        dist[i][j] = -1;
         Queue<Cell> q;
-        Cell start = { sr, sc };
+        Cell start = { 
+            sr, sc 
+        };
         dist[sr][sc] = 0;
         q.enqueue(start);
         Cell cur;
         while (q.dequeue(cur)) {
-            if (cur.r == tr && cur.c == tc) return dist[tr][tc];
+            if (cur.r == tr && cur.c == tc) 
+            return dist[tr][tc];
             for (int d = 0; d < 4; d++) {
                 int nr = cur.r + DR[d], nc = cur.c + DC[d];
-                if (!inBoard(nr, nc) || dist[nr][nc] != -1 || b[nr][nc] == SNAKE) continue;
+                if (!inBoard(nr, nc) || dist[nr][nc] != -1 || b[nr][nc] == SNAKE) 
+                continue;
                 dist[nr][nc] = dist[cur.r][cur.c] + 1;
-                Cell next = { nr, nc };
+                Cell next = { 
+                    nr, nc };
                 q.enqueue(next);
             }
         }
         return -1;
     }
 
-    // DFS (uses our Stack, no recursion): marks every cell reachable from (sr,sc).
+
     void reachable(const int b[ROWS][COLS], int sr, int sc, bool seen[ROWS][COLS]) {
-        for (int i = 0; i < ROWS; i++) for (int j = 0; j < COLS; j++) seen[i][j] = false;
+        for (int i = 0; i < ROWS; i++) 
+        for (int j = 0; j < COLS; j++) 
+        seen[i][j] = false;
         Stack<Cell> st;
-        Cell start = { sr, sc };
+        Cell start = { 
+            sr, sc };
         seen[sr][sc] = true;
         st.push(start);
         Cell cur;
         while (st.pop(cur)) {
             for (int d = 0; d < 4; d++) {
                 int nr = cur.r + DR[d], nc = cur.c + DC[d];
-                if (!inBoard(nr, nc) || seen[nr][nc] || b[nr][nc] == SNAKE) continue;
+                if (!inBoard(nr, nc) || seen[nr][nc] || b[nr][nc] == SNAKE) 
+                continue;
                 seen[nr][nc] = true;
-                Cell next = { nr, nc };
+                Cell next = { 
+                    nr, nc };
                 st.push(next);
             }
         }
     }
 }
 
-// ============================================================================
-//  8. PLAYER + GAME HISTORY  (history = singly linked list)
-// ============================================================================
 struct GameRecord {
     int id, diff, maxLen;
     long long score, pathCovered;
@@ -286,28 +332,46 @@ public:
     GameRecord *head, *tail;
     int nextId;
 
-    Player(const string& n) : name(n), head(nullptr), tail(nullptr), nextId(1) {}
-    ~Player() { clearHistory(); }
+    Player(string n) : name(n), head(nullptr), tail(nullptr), nextId(1) {}
+    ~Player() { 
+        clearHistory(); 
+    }
 
-    void addRecord(GameRecord r) {                     // append at the tail
-        if (r.id == 0) r.id = nextId;
-        if (r.id >= nextId) nextId = r.id + 1;
+    void addRecord(GameRecord r) {                  
+        if (r.id == 0) 
+        r.id = nextId;
+        if (r.id >= nextId) 
+        nextId = r.id + 1;
         GameRecord* n = new GameRecord(r);
         n->next = nullptr;
-        if (tail) tail->next = n; else head = n;
+        if (tail) 
+        tail->next = n; 
+        else 
+        head = n;
         tail = n;
     }
     void clearHistory() {
-        while (head) { GameRecord* n = head->next; delete head; head = n; }
-        tail = nullptr; nextId = 1;
+        while (head) { 
+            GameRecord* n = head->next; 
+            delete head; 
+            head = n; 
+        }
+        tail = nullptr; 
+        nextId = 1;
     }
-    int recordCount() const { int n = 0; for (GameRecord* p = head; p; p = p->next) n++; return n; }
+    int recordCount() { 
+        int n = 0; 
+        for (GameRecord* p = head; p; p = p->next) 
+        n++; 
+        return n; 
+    }
 
-    Stats stats() const {                              // walk the list and add everything up
+    Stats stats() {                              
         Stats s;
         for (GameRecord* p = head; p; p = p->next) {
             s.played++;
-            if (p->result == RES_SURVIVED) s.survived++;
+            if (p->result == RES_SURVIVED) 
+            s.survived++;
             s.points += p->score;
             s.totalPath += p->pathCovered;
             s.best = max(s.best, p->score);
@@ -319,58 +383,72 @@ public:
     }
 };
 
-// ============================================================================
-//  9. PLAYER DATABASE  -  BINARY SEARCH TREE (ordered by name, case-sensitive)
-// ============================================================================
-struct TreeNode { Player* p; TreeNode *left, *right; };
+struct TreeNode { 
+    Player* p; 
+    TreeNode *left, *right; 
+};
 
 class PlayerTree {
     TreeNode* root;
     int cnt;
 
-    static void destroy(TreeNode* n) {
-        if (!n) return;
-        destroy(n->left); destroy(n->right);
-        delete n->p; delete n;
-    }
-    // Delete by name. Cases: no left child / no right child / two children.
-    static TreeNode* removeRec(TreeNode* n, const string& name, bool& done) {
-        if (!n) return nullptr;
-        if (name < n->p->name)      n->left  = removeRec(n->left,  name, done);
-        else if (name > n->p->name) n->right = removeRec(n->right, name, done);
+
+    static TreeNode* removeRec(TreeNode* n, string name, bool& done) {
+        if (!n) 
+        return nullptr;
+        if (name < n->p->name)      
+        n->left  = removeRec(n->left,  name, done);
+        else if (name > n->p->name) 
+        n->right = removeRec(n->right, name, done);
         else {
-            if (!n->left)  { TreeNode* t = n->right; delete n->p; delete n; done = true; return t; }
-            if (!n->right) { TreeNode* t = n->left;  delete n->p; delete n; done = true; return t; }
-            TreeNode* s = n->right;                    // two children: use the inorder successor
-            while (s->left) s = s->left;
+            if (!n->left)  { 
+                TreeNode* t = n->right; 
+                delete n->p; 
+                delete n; 
+                done = true; 
+                return t; 
+            }
+            if (!n->right) { 
+                TreeNode* t = n->left;  
+                delete n->p; 
+                delete n; 
+                done = true; 
+                return t; 
+            }
+            TreeNode* s = n->right;                 
+            while (s->left) 
+            s = s->left;
             swap(n->p, s->p);
             n->right = removeRec(n->right, s->p->name, done);
         }
         return n;
     }
-    static Player* findIgnoreCase(TreeNode* n, const string& name) {
-        if (!n) return nullptr;
-        if (_stricmp(n->p->name.c_str(), name.c_str()) == 0) return n->p;
+    static Player* findIgnoreCase(TreeNode* n, string name) {
+        if (!n) 
+        return nullptr;
+        if (_stricmp(n->p->name.c_str(), name.c_str()) == 0) 
+        return n->p;
         Player* a = findIgnoreCase(n->left, name);
         return a ? a : findIgnoreCase(n->right, name);
     }
     static void inorder(TreeNode* n, Player** arr, int& i) {
-        if (!n) return;
+        if (!n) 
+        return;
         inorder(n->left, arr, i);
         arr[i++] = n->p;
         inorder(n->right, arr, i);
     }
     static void preorder(TreeNode* n, ostream& out) {
-        if (!n) return;
+        if (!n) 
+        return;
         out << n->p->name << "\n";
         preorder(n->left, out);
         preorder(n->right, out);
     }
 public:
     PlayerTree() : root(nullptr), cnt(0) {}
-    ~PlayerTree() { destroy(root); }
 
-    Player* find(const string& name) const {           // BST search
+    Player* find(string name) {          
         TreeNode* n = root;
         while (n) {
             if (name == n->p->name) return n->p;
@@ -378,121 +456,155 @@ public:
         }
         return nullptr;
     }
-    Player* findCaseInsensitive(const string& name) const { return findIgnoreCase(root, name); }
+    Player* findCaseInsensitive(string name) { 
+        return findIgnoreCase(root, name); 
+    }
 
 
-    Player* insert(const string& name) {
-        if (find(name)) return nullptr;                // names must be unique
+    Player* insert(string name) {
+        if (find(name)) 
+        return nullptr;               
         TreeNode* n = new TreeNode;
-        n->p = new Player(name); n->left = n->right = nullptr;
+        n->p = new Player(name); 
+        n->left = n->right = nullptr;
         cnt++;
-        if (!root) { root = n; return n->p; }
+        if (!root) { 
+            root = n; 
+            return n->p; 
+        }
         TreeNode* cur = root;
         while (true) {
             if (name < cur->p->name) {
-                if (!cur->left) { cur->left = n; break; }
+                if (!cur->left) { 
+                    cur->left = n; 
+                    break; 
+                }
                 cur = cur->left;
             } else {
-                if (!cur->right) { cur->right = n; break; }
+                if (!cur->right) { 
+                    cur->right = n; 
+                    break; }
                 cur = cur->right;
             }
         }
         return n->p;
     }
-    bool remove(const string& name) {
+    bool remove(string name) {
         bool done = false;
         root = removeRec(root, name, done);
-        if (done) cnt--;
+        if (done) 
+        cnt--;
         return done;
     }
-    int count() const { return cnt; }
+    int count() { 
+        return cnt; 
+    }
 
-    // All players in A-Z order, as a new array (caller deletes it).
-    Player** toArray(int& n) const {
+    
+    Player** toArray(int& n) {
         n = cnt;
-        if (cnt == 0) return nullptr;
+        if (cnt == 0) 
+        return nullptr;
         Player** arr = new Player*[cnt];
         int i = 0;
         inorder(root, arr, i);
         return arr;
     }
-    // Names in preorder: loading them back in this order rebuilds the same tree shape.
-    void savePreorder(ostream& out) const { preorder(root, out); }
+    void savePreorder(ostream& out) { 
+        preorder(root, out); 
+    }
 };
 
-// ============================================================================
-//  10. ADMIN ACCOUNTS  -  SINGLY LINKED LIST
-// ============================================================================
-struct Admin { string user; unsigned long long hash; Admin* next; };
+struct Admin { 
+    string user; 
+    unsigned long long hash; 
+    Admin* next; 
+};
 
 class AdminList {
     Admin* head;
     int cnt;
 public:
     AdminList() : head(nullptr), cnt(0) {}
-    ~AdminList() { while (head) { Admin* n = head->next; delete head; head = n; } }
 
-    Admin* find(const string& u) const {
-        for (Admin* a = head; a; a = a->next) if (a->user == u) return a;
+    Admin* find(string u) {
+        for (Admin* a = head; a; a = a->next) 
+        if (a->user == u) 
+        return a;
         return nullptr;
     }
-    Admin* findCaseInsensitive(const string& u) const {
-        for (Admin* a = head; a; a = a->next) if (_stricmp(a->user.c_str(), u.c_str()) == 0) return a;
+    Admin* findCaseInsensitive(string u) {
+        for (Admin* a = head; a; a = a->next) 
+        if (_stricmp(a->user.c_str(), u.c_str()) == 0) 
+        return a;
         return nullptr;
     }
-    void add(const string& u, unsigned long long h) {  // append at the end
-        Admin* n = new Admin; n->user = u; n->hash = h; n->next = nullptr;
-        if (!head) head = n;
-        else { Admin* t = head; while (t->next) t = t->next; t->next = n; }
+    void add(string u, unsigned long long h) {  
+        Admin* n = new Admin; 
+        n->user = u; 
+        n->hash = h; 
+        n->next = nullptr;
+        if (!head) 
+        head = n;
+        else { 
+            Admin* t = head; 
+            while (t->next) 
+            t = t->next; 
+            t->next = n; 
+        }
         cnt++;
     }
-    int count() const { return cnt; }
-    Admin* first() const { return head; }
+    int count() { 
+        return cnt; 
+    }
+    Admin* first() { 
+        return head; 
+    }
 };
 
-// ============================================================================
-//  11. SORTING
-// ============================================================================
-struct LBEntry { string name; Stats stats; long long rank; };
+struct LBEntry { 
+    string name; 
+    Stats stats; 
+    long long rank; 
+};
 
-// Same points with less path covered earns a bigger bonus.
 static long long efficiencyBonus(long long points, long long path) {
-    if (points <= 0 || path <= 0) return 0;
+    if (points <= 0 || path <= 0) 
+    return 0;
     return (points * 1000LL) / (path + 1000LL);
 }
-// Rank = points + (TARGET/2) per survived game + efficiency bonus
-static long long rankScore(const Stats& s) {
+static long long rankScore(Stats s) {
     return s.points + SURVIVE_BONUS * s.survived + efficiencyBonus(s.points, s.totalPath);
 }
-static bool ranksBefore(const LBEntry& a, const LBEntry& b) {       // higher rank first
-    if (a.rank != b.rank) return a.rank > b.rank;
-    if (a.stats.survived != b.stats.survived) return a.stats.survived > b.stats.survived;
+static bool ranksBefore(LBEntry a, LBEntry b) {      
+    if (a.rank != b.rank) 
+    return a.rank > b.rank;
+    if (a.stats.survived != b.stats.survived) 
+    return a.stats.survived > b.stats.survived;
     return a.name < b.name;
 }
-// Quick Sort: pick a pivot, put better entries before it, sort both halves.
 static void quickSort(LBEntry* a, int lo, int hi) {
-    if (lo >= hi) return;
-    swap(a[(lo + hi) / 2], a[hi]);                     // middle element as pivot
+    if (lo >= hi) 
+    return;
+    swap(a[(lo + hi) / 2], a[hi]);                    
     int i = lo;
     for (int j = lo; j < hi; j++)
         if (ranksBefore(a[j], a[hi])) { swap(a[i], a[j]); i++; }
-    swap(a[i], a[hi]);                                 // pivot to its final place
+    swap(a[i], a[hi]);                               
     quickSort(a, lo, i - 1);
     quickSort(a, i + 1, hi);
 }
-// Insertion Sort: highest score first.
 static void insertionSortByScore(GameRecord** a, int n) {
     for (int i = 1; i < n; i++) {
         GameRecord* key = a[i];
         int j = i - 1;
-        while (j >= 0 && a[j]->score < key->score) { a[j + 1] = a[j]; j--; }
+        while (j >= 0 && a[j]->score < key->score) { 
+            a[j + 1] = a[j]; j--; 
+        }
         a[j + 1] = key;
     }
 }
 
-// ============================================================================
-//  12. GLOBAL DATA + FILES
-// ============================================================================
 static PlayerTree gPlayers;
 static AdminList  gAdmins;
 
@@ -503,19 +615,22 @@ static const char* F_HISTORY = "history.dat";
 static void saveAll() {
     ofstream fp(F_PLAYERS), fh(F_HISTORY), fa(F_ADMINS);
     gPlayers.savePreorder(fp);
-    int n; Player** arr = gPlayers.toArray(n);
+    int n; 
+    Player** arr = gPlayers.toArray(n);
     for (int i = 0; i < n; i++)
         for (GameRecord* r = arr[i]->head; r; r = r->next)
             fh << arr[i]->name << " " << r->id << " " << r->diff << " " << r->maxLen << " " << r->score << " "
                << r->pathCovered << " " << r->food << " " << r->livesLost << " " << r->result << "\n";
     delete[] arr;
-    for (Admin* a = gAdmins.first(); a; a = a->next) fa << a->user << " " << a->hash << "\n";
+    for (Admin* a = gAdmins.first(); a; a = a->next) 
+    fa << a->user << " " << a->hash << "\n";
 }
 
 static void loadAll() {
     string name;
     ifstream fp(F_PLAYERS);
-    while (fp >> name) gPlayers.insert(name);
+    while (fp >> name) 
+    gPlayers.insert(name);
 
     ifstream fh(F_HISTORY);
     GameRecord r;
@@ -525,48 +640,61 @@ static void loadAll() {
     }
     ifstream fa(F_ADMINS);
     unsigned long long h;
-    while (fa >> name >> h) gAdmins.add(name, h);
+    while (fa >> name >> h) 
+    gAdmins.add(name, h);
 }
-
-// ============================================================================
-//  13. SCREEN / INPUT HELPERS
-// ============================================================================
 static string readLine() {
     Term::flushInput();
     string s;
-    if (!getline(cin, s)) { Term::shutdown(); exit(0); }
+    if (!getline(cin, s)) { 
+        Term::shutdown(); 
+        exit(0); 
+    }
     size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
     return (a == string::npos) ? "" : s.substr(a, b - a + 1);
 }
-static int readInt() {                                 // -1 if not a number
+static int readInt() {                               
     string s = readLine();
-    if (s.empty() || s.size() > 6) return -1;
-    for (size_t i = 0; i < s.size(); i++) if (!isdigit((unsigned char)s[i])) return -1;
+    if (s.empty() || s.size() > 6) 
+    return -1;
+    for (size_t i = 0; i < s.size(); i++) 
+    if (!isdigit((unsigned char)s[i])) 
+    return -1;
     return atoi(s.c_str());
 }
-static void pauseEnter() { cout << C_GREY << "\nPress Enter to continue..." << C_RESET << flush; readLine(); }
-static bool confirm(const string& q) {
+static void pauseEnter() { 
+    cout << C_GREY << "\nPress Enter to continue..." << C_RESET << flush; readLine(); 
+}
+static bool confirm(string q) {
     cout << C_YELLOW << q << " (Y/N): " << C_RESET << flush;
     string s = readLine();
     return _stricmp(s.c_str(), "y") == 0 || _stricmp(s.c_str(), "yes") == 0;
 }
 static void header(const string& title) {
     Term::clearScreen();
-    cout << "\033[?25h" << C_CYAN << "================================\n";
-    int pad = max(0, (32 - visibleLen(title)) / 2);
-    cout << rep(" ", pad) << C_WHITE << title << C_CYAN << "\n";
-    cout << "================================\n" << C_RESET << "\n";
+    cout << "================================\n"
+         << "  " << title << "\n"
+         << "================================\n\n";
 }
-static string readPassword(const string& prompt) {     // shows * while typing
+static string readPassword(string prompt) {     
     cout << prompt << flush;
     Term::flushInput();
     string s;
     while (true) {
         int k = Term::readKey();
-        if (!k) { Term::sleepMs(10); continue; }
-        if (k == '\n') break;
-        if ((k == 8 || k == 127) && !s.empty()) { s.erase(s.size() - 1); cout << "\b \b" << flush; }
-        else if (k >= 32 && k < 127) { s += (char)k; cout << '*' << flush; }
+        if (!k) { 
+            Term::sleepMs(10); 
+            continue; 
+        }
+        if (k == '\n') 
+        break;
+        if ((k == 8 || k == 127) && !s.empty()) { 
+            s.erase(s.size() - 1); 
+            cout << "\b \b" << flush; 
+        }
+        else if (k >= 32 && k < 127) { 
+            s += (char)k; cout << '*' << flush; 
+        }
     }
     cout << "\n";
     return s;
@@ -601,18 +729,19 @@ static void printRules() {
     pauseEnter();
 }
 
-// ============================================================================
-//  14. DRAWING THE BOARD AND POPUPS
-// ============================================================================
 static string boardString(const int b[ROWS][COLS], int headR, int headC) {
     string s = string(C_GREY) + "┌" + rep("─", COLS * 2) + "┐" + C_RESET + "\n";
     for (int r = 0; r < ROWS; r++) {
         s += string(C_GREY) + "│" + C_RESET;
         for (int c = 0; c < COLS; c++) {
-            if (b[r][c] == SNAKE && r == headR && c == headC) s += "\033[48;5;226m  \033[0m";   // head: yellow
-            else if (b[r][c] == SNAKE)                        s += "\033[42m  \033[0m";          // body: green
-            else if (b[r][c] == FOOD)                         s += "\033[41m  \033[0m";          // food: red
-             else                      s += ((r + c) & 1) ? "\033[48;5;236m  \033[0m" : "\033[48;5;235m  \033[0m";
+            if (b[r][c] == SNAKE && r == headR && c == headC) 
+                s += "\033[48;5;226m  \033[0m";   
+            else if (b[r][c] == SNAKE)                        
+                s += "\033[42m  \033[0m";          
+            else if (b[r][c] == FOOD)                         
+                s += "\033[41m  \033[0m";         
+             else                      
+                s += ((r + c) & 1) ? "\033[48;5;236m  \033[0m" : "\033[48;5;235m  \033[0m";
         }
         s += string(C_GREY) + "│" + C_RESET + "\n";
     }
@@ -620,34 +749,30 @@ static string boardString(const int b[ROWS][COLS], int headR, int headC) {
     return s;
 }
 
-// Box drawn over the board (the board is not cleared).
-static void showPopup(int top, int width, const string* lines, int n, const char* color) {
-    int left = (COLS * 2 + 2 - width) / 2 + 1;
-    string s;
-    #define AT(r) ("\033[" + to_string(r) + ";" + to_string(left) + "H" + color)
-    s += AT(top) + "┌" + rep("─", width - 2) + "┐";
-    for (int i = 0; i < n; i++) {
-        int space = width - 2 - visibleLen(lines[i]);
-        int l = space / 2;
-        s += AT(top + 1 + i) + "│" + rep(" ", l) + lines[i] + rep(" ", space - l) + "│";
+static char waitChoice(const char* valid) {           
+    while (true) {
+        int k = Term::readKey();
+        for (const char* v = valid; *v; v++) 
+        if (k == *v) 
+        return *v;
+        Term::sleepMs(10);
     }
-    s += AT(top + 1 + n) + "└" + rep("─", width - 2) + "┘" + C_RESET;
-    #undef AT
-    cout << s << flush;
 }
 
-// ============================================================================
-//  15. THE GAME
-// ============================================================================
-// One recorded move (pushed on the replay stack every tick).
-struct Move { char dir; bool ate, collided, grew; int foodR, foodC; };
+struct Move { 
+    char dir; 
+    bool ate, collided, grew; 
+    int foodR, foodC; 
+};
 
 struct ReplayData {
     int startFoodR = -1, startFoodC = -1;
-    Stack<Move> moves;                                 // top = last move played
+    Stack<Move> moves;                               
 };
 
-enum StepResult { STEP_OK, STEP_ATE, STEP_COLLIDE };
+enum StepResult { 
+    STEP_OK, STEP_ATE, STEP_COLLIDE 
+};
 
 static int keyToDir(int k) {
     switch (k) {
@@ -660,84 +785,110 @@ static int keyToDir(int k) {
 }
 
 class Game {
-    int board[ROWS][COLS];                             // the grid (array)
-    Snake snake;                                       // the snake (doubly linked list)
+    int board[ROWS][COLS];                             
+    Snake snake;                                       
     int dir, diff, delay;
     int foodR, foodC, foodDist;
     long long foodVal, score, pathCovered;
     int lives, foodEaten, livesLost, maxLen;
-    int growLeft;                                      // segments still to add after eating
-    bool grewLast;                                     // did the last move make the snake longer?
-    string msg; int msgMs;
+    int growLeft;                                      
+    bool grewLast;                                     
+    string msg; 
+    int msgMs;
 
-    // Put the snake back at the start position with its starting length.
     void buildSnake() {
         snake.clear();
-        for (int i = 0; i < ROWS; i++) for (int j = 0; j < COLS; j++) board[i][j] = EMPTY;
+        for (int i = 0; i < ROWS; i++) 
+        for (int j = 0; j < COLS; j++) 
+        board[i][j] = EMPTY;
         int r = ROWS / 2, headC = COLS / 3;
-        for (int i = DIFFS[diff].startLen - 1; i >= 0; i--) { snake.addHead(r, headC - i); board[r][headC - i] = SNAKE; }
+        for (int i = DIFFS[diff].startLen - 1; i >= 0; i--) { 
+            snake.addHead(r, headC - i); 
+            board[r][headC - i] = SNAKE; 
+        }
         dir = RIGHT;
         growLeft = 0;
     }
 
-    // DFS finds every cell the snake can reach; food spawns on a random one of them.
-    // BFS then measures the shortest path to it.
     void placeFood() {
         bool seen[ROWS][COLS];
         Graph::reachable(board, snake.headR(), snake.headC(), seen);
         int free = 0;
-        for (int i = 0; i < ROWS; i++) for (int j = 0; j < COLS; j++) if (seen[i][j] && board[i][j] == EMPTY) free++;
-        if (free == 0) { foodR = foodC = foodDist = -1; return; }      // board is full
+        for (int i = 0; i < ROWS; i++) 
+        for (int j = 0; j < COLS; j++) 
+        if (seen[i][j] && board[i][j] == EMPTY) 
+        free++;
+        if (free == 0) { 
+            foodR = foodC = foodDist = -1; return; 
+        }     
         int pick = rand() % free;
-        for (int i = 0; i < ROWS; i++) for (int j = 0; j < COLS; j++) {
-            if (!seen[i][j] || board[i][j] != EMPTY) continue;
+        for (int i = 0; i < ROWS; i++) 
+        for (int j = 0; j < COLS; j++) {
+            if (!seen[i][j] || board[i][j] != EMPTY) 
+            continue;
             if (pick-- == 0) {
-                foodR = i; foodC = j; board[i][j] = FOOD;
+                foodR = i; 
+                foodC = j; 
+                board[i][j] = FOOD;
                 foodDist = Graph::shortestPath(board, snake.headR(), snake.headC(), i, j);
                 return;
             }
         }
     }
 
-    // Move the snake one cell.
     int step() {
         grewLast = false;
         int nr = snake.headR() + DR[dir], nc = snake.headC() + DC[dir];
-        if (!inBoard(nr, nc)) return STEP_COLLIDE;                              // hit a border
+        if (!inBoard(nr, nc)) 
+        return STEP_COLLIDE;                             
         bool eating  = (board[nr][nc] == FOOD);
-        bool growing = eating || growLeft > 0;                                  // tail stays => snake gets longer
+        bool growing = eating || growLeft > 0;                                  
         bool onTail  = (nr == snake.tailR() && nc == snake.tailC());
-        if (snake.contains(nr, nc) && !(onTail && !growing)) return STEP_COLLIDE;   // hit own body
+        if (snake.contains(nr, nc) && !(onTail && !growing)) 
+        return STEP_COLLIDE;  
 
-        if (!growing) { int tr = 0, tc = 0; snake.removeTail(tr, tc); board[tr][tc] = EMPTY; }   // tail leaves
-        else if (!eating) growLeft--;                                           // using up stored growth
+        if (!growing) { 
+            int tr = 0, tc = 0; 
+            snake.removeTail(tr, tc); 
+            board[tr][tc] = EMPTY; 
+        }   
+        else if (!eating) 
+        growLeft--;                                       
         grewLast = growing;
-        snake.addHead(nr, nc); board[nr][nc] = SNAKE;
+        snake.addHead(nr, nc); 
+        board[nr][nc] = SNAKE;
         pathCovered++;
         maxLen = max(maxLen, snake.length());
         if (!eating) {
-            if (foodR >= 0) foodDist = Graph::shortestPath(board, snake.headR(), snake.headC(), foodR, foodC);
+            if (foodR >= 0) 
+            foodDist = Graph::shortestPath(board, snake.headR(), snake.headC(), foodR, foodC);
             return STEP_OK;
         }
-        growLeft += DIFFS[diff].grow - 1;                                       // this move already grew by 1
+        growLeft += DIFFS[diff].grow - 1;                                   
         score += foodVal;
-        msg = "FOOD +" + to_string(foodVal); msgMs = 1200;
-        foodVal *= 2; foodEaten++;
-        delay = max(DIFFS[diff].minDelay, delay - DIFFS[diff].accel);           // speed up
+        msg = "FOOD +" + to_string(foodVal); 
+        msgMs = 1200;
+        foodVal *= 2; 
+        foodEaten++;
+        delay = max(DIFFS[diff].minDelay, delay - DIFFS[diff].accel);          
         placeFood();
         return STEP_ATE;
     }
 
-        void render() const {
+        void render() {
         string hearts;
         for (int i = 0; i < 3; i++) {
-            if (i < lives) hearts += string(C_RED) + "♥ " + C_RESET;
-            else           hearts += string(C_GREY) + "♥ " + C_RESET;
+            if (i < lives) 
+            hearts += string(C_RED) + "♥ " + C_RESET;
+            else           
+            hearts += string(C_GREY) + "♥ " + C_RESET;
         }
         string pathText = "-";
-        if (foodDist >= 0) pathText = to_string(foodDist) + " steps";
+        if (foodDist >= 0) 
+        pathText = to_string(foodDist) + " steps";
         string msgText = "";
-        if (msgMs > 0) msgText = string(C_GREEN) + msg + C_RESET;
+        if (msgMs > 0) 
+        msgText = string(C_GREEN) + msg + C_RESET;
 
         string s = boardString(board, snake.headR(), snake.headC());
         s += " Score: " + string(C_YELLOW) + to_string(score) + C_RESET + "     Lives: " + hearts + "\033[K\n";
@@ -749,46 +900,46 @@ class Game {
         Term::gameHome();
         cout << s << flush;
     }
+    void redraw() { 
+        Term::clearScreen(); 
+        render(); 
+    }
 
-    bool confirmQuit() {
-        string l[4] = { "QUIT THIS GAME?", "", "Y = Yes, quit", "N = No, go back" };
-        showPopup(5, 30, l, 4, "\033[1;97;41m");
+    bool confirmQuit() {                               
+        Term::clearScreen();
+        cout << "Quit this game?\n\n  Y = Yes, quit\n  N = No, go back\n";
+        char k = waitChoice("yYnN");
+        return k == 'y' || k == 'Y';
+    }
+    bool pauseMenu() {                                
         while (true) {
-            int k = Term::readKey();
-            if (k == 'y' || k == 'Y') return true;
-            if (k == 'n' || k == 'N') return false;
-            Term::sleepMs(10);
+            Term::clearScreen();
+            cout << "PAUSED\n\n  P = Resume\n  Q = Quit game\n";
+            char k = waitChoice("pPqQ");
+            if (k == 'p' || k == 'P') { redraw(); return false; }
+            if (confirmQuit()) 
+            return true;
         }
     }
-    bool pauseMenu() {                                 // true = player quit
-        string l[4] = { "PAUSED", "", "P = Resume", "Q = Quit Game" };
-        showPopup(5, 30, l, 4, "\033[1;97;44m");
-        while (true) {
-            int k = Term::readKey();
-            if (k == 'p' || k == 'P') { render(); return false; }
-            if (k == 'q' || k == 'Q') {
-                if (confirmQuit()) return true;
-                render(); showPopup(5, 30, l, 4, "\033[1;97;44m");
-            }
-            Term::sleepMs(10);
-        }
-    }
-    void record(int d, bool ate, bool collided) {      // push this move on the replay stack
+    void record(int d, bool ate, bool collided) {     
         Move m = { (char)d, ate, collided, grewLast, foodR, foodC };
         replay.moves.push(m);
     }
-        // Put the replay board back at the start position (snake + food).
+
     void replayRestart(int b[ROWS][COLS], Snake& s, int fr, int fc) {
         s.clear();
-        for (int i = 0; i < ROWS; i++) for (int j = 0; j < COLS; j++) b[i][j] = EMPTY;
+        for (int i = 0; i < ROWS; i++) 
+        for (int j = 0; j < COLS; j++) 
+        b[i][j] = EMPTY;
         for (int i = DIFFS[diff].startLen - 1; i >= 0; i--) {
             s.addHead(ROWS / 2, COLS / 3 - i);
             b[ROWS / 2][COLS / 3 - i] = SNAKE;
         }
-        if (fr >= 0) b[fr][fc] = FOOD;
+        if (fr >= 0) 
+        b[fr][fc] = FOOD;
     }
-    // Draw one replay frame.
-    void replayDraw(const int b[ROWS][COLS], const Snake& s, int number, int total, long long sc, const string& note) const {
+
+    void replayDraw(const int b[ROWS][COLS], Snake& s, int number, int total, long long sc, string note) {
         string out = boardString(b, s.headR(), s.headC());
         out += string(C_CYAN) + " REPLAY" + C_RESET + "   Move " + to_string(number) + " / " + to_string(total) +
                "   Score: " + to_string(sc) + "\033[K\n";
@@ -806,85 +957,105 @@ public:
                   maxLen(DIFFS[d].startLen), growLeft(0), grewLast(false), msg(""), msgMs(0) {
         buildSnake();
         placeFood();
-        replay.startFoodR = foodR; replay.startFoodC = foodC;
+        replay.startFoodR = foodR; 
+        replay.startFoodC = foodC;
     }
 
-    GameRecord makeRecord(int result) const {
+    GameRecord makeRecord(int result) {
         GameRecord r;
-        r.id = 0; r.diff = diff; r.maxLen = maxLen; r.score = score; r.pathCovered = pathCovered;
-        r.food = foodEaten; r.livesLost = livesLost; r.result = result; r.next = nullptr;
+        r.id = 0; r.diff = diff; 
+        r.maxLen = maxLen; 
+        r.score = score; 
+        r.pathCovered = pathCovered;
+        r.food = foodEaten; 
+        r.livesLost = livesLost; 
+        r.result = result; 
+        r.next = nullptr;
         return r;
     }
 
-    // The main loop. Returns RES_LOST, RES_SURVIVED or RES_QUIT.
     int run() {
     Term::flushInput();
         cout << "\033[?25l";
         Term::clearScreen();
         render();
         while (true) {
-            // 1. collect key presses for one tick
             int newDir = -1;
             for (int waited = 0; waited < delay; waited += 5) {
                 int k = Term::readKey();
                 int d = keyToDir(k);
-                if (d >= 0) { if (d != (dir + 2) % 4) newDir = d; }             // no instant U-turn
-                else if (k == 'p' || k == 'P') { if (pauseMenu()) return RES_QUIT; }
-                else if (k == 'q' || k == 'Q') { if (confirmQuit()) return RES_QUIT; render(); }
+                if (d >= 0) { if (d != (dir + 2) % 4) newDir = d; }           
+                else if (k == 'p' || k == 'P') { 
+                    if (pauseMenu()) 
+                    return RES_QUIT; 
+                }
+                else if (k == 'q' || k == 'Q') { 
+                    if (confirmQuit()) 
+                    return RES_QUIT; 
+                    redraw(); }
                 Term::sleepMs(5);
             }
-            if (newDir >= 0) dir = newDir;
+            if (newDir >= 0) 
+            dir = newDir;
             int used = dir;
-
-            // 2. move
             int res = step();
             if (msgMs > 0) msgMs -= delay;
-
-            // 3. collision => lose a life
             if (res == STEP_COLLIDE) {
-                lives--; livesLost++;
+                lives--; 
+                livesLost++;
                 Term::beep(220, 150);
                 render();
-                if (lives == 0) { record(used, false, true); Term::sleepMs(400); return RES_LOST; }
-                string l[3] = { "LIFE LOST", "", "Lives left: " + to_string(lives) };
-                showPopup(6, 26, l, 3, "\033[1;97;41m");
-                Term::sleepMs(1000); Term::flushInput();
-                buildSnake(); placeFood();                                      // safe restart, score is kept
+                if (lives == 0) { 
+                    record(used, false, true); 
+                    Term::sleepMs(400); 
+                    return RES_LOST; 
+                }
+                msg = "LIFE LOST!   Lives left: " + to_string(lives); 
+                msgMs = 1000;
+                render();
+                Term::sleepMs(1000); 
+                Term::flushInput();
+                msgMs = 0;
+                buildSnake(); 
+                placeFood();                                     
                 record(used, false, true);
                 render();
                 continue;
             }
 
-            // 4. normal move / food
-            if (res == STEP_ATE) Term::beep(880, 35);
+            if (res == STEP_ATE) 
+            Term::beep(880, 35);
             record(used, res == STEP_ATE, false);
             render();
-            if (score >= TARGET || foodR < 0) return RES_SURVIVED;             // 2^40 reached
+            if (score >= TARGET || foodR < 0) 
+            return RES_SURVIVED;             
         }
     }
 
-    void showEndScreen(int res) {
-        render();
+        void showEndScreen(int res) {
+        Term::clearScreen();
         if (res == RES_LOST) {
-            Term::beep(300, 120); Term::beep(150, 250);
-            string l[8] = { "GAME OVER", "", "Score: " + to_string(score), "Length: " + to_string(maxLen), "",
-                            "1. Play Again", "2. Watch Replay", "3. Return to Menu" };
-            showPopup(4, 32, l, 8, "\033[1;97;41m");
-        } else {
-            for (int i = 0; i < 6; i++) Term::beep(500 + i * 120, 60);
-            string l[7] = { "★ MILESTONE ★", "", to_string(TARGET) + " POINTS!", "Score: " + to_string(score), "",
-                            "1. Play Again", "2. Return to Menu" };
-            showPopup(4, 32, l, 7, "\033[1;30;103m");
+            Term::beep(300, 120); 
+            Term::beep(150, 250);
+            cout << "============ GAME OVER ============\n\n";
+        } 
+        else {
+            for (int i = 0; i < 6; i++) 
+            Term::beep(500 + i * 120, 60);
+            cout << "============ MILESTONE ============\n\n  " << to_string(TARGET) << " POINTS!\n\n";
         }
+        cout << "  Score:  " << to_string(score) << "\n"
+             << "  Length: " << maxLen << "\n\n";
+        if (res == RES_LOST) 
+        cout << "  1. Play Again\n  2. Watch Replay\n  3. Return to Menu\n";
+        else                 
+        cout << "  1. Play Again\n  2. Return to Menu\n";
     }
-
-    // Replay: the stack gives the LAST move first, so we pour it into a second stack
-    // (which reverses it) and play from there. Each played move is pushed back, so the
-    // original stack is restored and the replay can be watched again.
         void playReplay() {
         Stack<Move> forward; Move m;
         int total = replay.moves.size();
-        while (replay.moves.pop(m)) forward.push(m);              // reverse the order
+        while (replay.moves.pop(m)) 
+        forward.push(m);              
 
         int b[ROWS][COLS]; Snake s;
         long long sc = 0, foodVal2 = 1;
@@ -897,22 +1068,31 @@ public:
 
         bool stop = false;
         while (forward.pop(m)) {
-            replay.moves.push(m);                                 // put it back
-            if (stop) continue;
+            replay.moves.push(m);                                
+            if (stop) 
+            continue;
             number++;
             if (m.collided) {
                 replayDraw(b, s, number, total, sc, "LIFE LOST");
                 Term::sleepMs(500);
                 curFoodR = m.foodR; curFoodC = m.foodC;
                 replayRestart(b, s, curFoodR, curFoodC);
-            } else {
+            } 
+            else {
                 int nr = s.headR() + DR[(int)m.dir], nc = s.headC() + DC[(int)m.dir];
-                if (m.ate) { sc += foodVal2; foodVal2 *= 2; }
-                if (!m.grew) { int tr = 0, tc = 0; s.removeTail(tr, tc); b[tr][tc] = EMPTY; }
+                if (m.ate) { 
+                    sc += foodVal2; foodVal2 *= 2; 
+                }
+                if (!m.grew) { 
+                    int tr = 0, tc = 0; 
+                    s.removeTail(tr, tc); b[tr][tc] = EMPTY; 
+                }
                 s.addHead(nr, nc); b[nr][nc] = SNAKE;
                 if (m.foodR != curFoodR || m.foodC != curFoodC) {
-                    curFoodR = m.foodR; curFoodC = m.foodC;
-                    if (curFoodR >= 0) b[curFoodR][curFoodC] = FOOD;
+                    curFoodR = m.foodR; 
+                    curFoodC = m.foodC;
+                    if (curFoodR >= 0) 
+                    b[curFoodR][curFoodC] = FOOD;
                 }
             }
             string note = "";
@@ -920,7 +1100,8 @@ public:
             replayDraw(b, s, number, total, sc, note);
             for (int w = 0; w < 70 && !stop; w += 10) {
                 int k = Term::readKey();
-                if (k == 'q' || k == 'Q') stop = true;
+                if (k == 'q' || k == 'Q') 
+                stop = true;
                 Term::sleepMs(10);
             }
         }
@@ -928,11 +1109,11 @@ public:
     }
 };
 
-// ============================================================================
-//  16. PLAYER SCREENS
-// ============================================================================
 static void printRecords(GameRecord** arr, int n) {
-    if (n == 0) { cout << "  (no games to show)\n"; return; }
+    if (n == 0) { 
+        cout << "  (no games to show)\n"; 
+        return; 
+    }
     cout << C_YELLOW << left << setw(6) << "Game" << setw(11) << "Difficulty" << setw(19) << "Score"
          << setw(7) << "Length" << setw(6) << "Food" << setw(9) << "Path" << setw(11) << "Lives Lost" << "Result" << C_RESET << "\n";
     cout << rep("-", 77) << "\n";
@@ -962,28 +1143,36 @@ static void historyMenu(Player* p) {
         cout << "1. View all games\n2. Filter by difficulty\n3. Filter by minimum score\n"
              << "4. Sort by score (highest first)\n5. Back\n\nEnter choice: " << flush;
         int ch = readInt();
-        if (ch == 5) return;
-        if (ch < 1 || ch > 4) continue;
+        if (ch == 5) 
+        return;
+        if (ch < 1 || ch > 4) 
+        continue;
 
-        int limit = 0, wanted = 0;                     // filter settings
+        int limit = 0, wanted = 0;                     
         if (ch == 2) {
             cout << "Difficulty (1=Easy 2=Medium 3=Hard): " << flush;
             wanted = readInt();
-            if (wanted < 1 || wanted > 3) continue;
-        } else if (ch == 3) {
+            if (wanted < 1 || wanted > 3) 
+            continue;
+        } 
+        else if (ch == 3) {
             cout << "Minimum score: " << flush;
             limit = readInt();
-            if (limit < 0) continue;
+            if (limit < 0) 
+            continue;
         }
 
         int total = p->recordCount(), n = 0;
         GameRecord** arr = total ? new GameRecord*[total] : nullptr;
-        for (GameRecord* r = p->head; r; r = r->next) {                 // linear search / filter
-            if (ch == 2 && r->diff != wanted - 1) continue;
-            if (ch == 3 && r->score < limit) continue;
+        for (GameRecord* r = p->head; r; r = r->next) {                 
+            if (ch == 2 && r->diff != wanted - 1)
+             continue;
+            if (ch == 3 && r->score < limit)
+             continue;
             arr[n++] = r;
         }
-        if (ch == 4) insertionSortByScore(arr, n);
+        if (ch == 4) 
+        insertionSortByScore(arr, n);
         cout << "\n";
         printRecords(arr, n);
         delete[] arr;
@@ -991,7 +1180,6 @@ static void historyMenu(Player* p) {
     }
 }
 
-// Leaderboard and all player statistics in one table.
 static void showLeaderboard() {
     header("LEADERBOARD");
     int n; Player** players = gPlayers.toArray(n);
@@ -999,12 +1187,20 @@ static void showLeaderboard() {
     int m = 0;
     for (int i = 0; i < n; i++) {
         Stats s = players[i]->stats();
-        if (s.played == 0) continue;
-        e[m].name = players[i]->name; e[m].stats = s; e[m].rank = rankScore(s);
+        if (s.played == 0) 
+        continue;
+        e[m].name = players[i]->name;
+         e[m].stats = s;
+        e[m].rank = rankScore(s);
         m++;
     }
     delete[] players;
-    if (m == 0) { cout << "  No games have been played yet.\n"; delete[] e; pauseEnter(); return; }
+    if (m == 0) { 
+        cout << "  No games have been played yet.\n"; 
+        delete[] e; 
+        pauseEnter(); 
+        return; 
+    }
 
         quickSort(e, 0, m - 1);
     cout << C_YELLOW << left << setw(4) << "#" << setw(15) << "Player" << setw(5) << "G" << setw(6) << "Surv"
@@ -1012,7 +1208,7 @@ static void showLeaderboard() {
          << setw(7) << "Lives" << "Path" << C_RESET << "\n";
     cout << rep("-", 89) << "\n";
     for (int i = 0; i < m && i < 20; i++) {
-        const Stats& s = e[i].stats;
+        Stats s = e[i].stats;
         cout << left << setw(4) << (i + 1) << setw(15) << e[i].name << setw(5) << s.played << setw(6) << s.survived
              << setw(16) << s.points << setw(16) << s.best << setw(6) << s.highLen
              << setw(6) << s.food << setw(7) << s.lives << s.totalPath << "\n";
@@ -1033,15 +1229,6 @@ static int chooseDifficulty() {
     return (c >= 1 && c <= 3) ? c - 1 : -1;
 }
 
-static char waitChoice(const char* valid) {            // wait for one of the given keys
-    while (true) {
-        int k = Term::readKey();
-        for (const char* v = valid; *v; v++) if (k == *v) return *v;
-        Term::sleepMs(10);
-    }
-}
-
-// One login session: any number of games.
 static void playSession(Player* p) {
     while (true) {
         int d = chooseDifficulty();
@@ -1065,9 +1252,13 @@ static void playSession(Player* p) {
         while (true) {
             if (res == RES_LOST) {
                 char k = waitChoice("123");
-                if (k == '2') { g.playReplay(); g.showEndScreen(res); continue; }
+                if (k == '2') { 
+                    g.playReplay(); 
+                    g.showEndScreen(res); 
+                    continue; }
                 again = (k == '1');
-            } else {
+            } 
+            else {
                 again = (waitChoice("12") == '1');
             }
             break;
@@ -1082,11 +1273,18 @@ static void playerMenu(Player* p) {
         header("WELCOME, " + p->name + "!");
         cout << "1. Play Game\n2. Game History\n3. My Statistics\n4. Leaderboard\n5. Logout\n\nEnter choice: " << flush;
         switch (readInt()) {
-            case 1: playSession(p); break;
-            case 2: historyMenu(p); break;
-            case 3: header("MY STATISTICS"); printStats(p); pauseEnter(); break;
-            case 4: showLeaderboard(); break;
-            case 5: return;
+            case 1: playSession(p); 
+                break;
+            case 2: historyMenu(p); 
+                break;
+            case 3: header("MY STATISTICS"); 
+                printStats(p); 
+                pauseEnter(); 
+                break;
+            case 4: showLeaderboard(); 
+                break;
+            case 5: 
+            return;
         }
     }
 }
@@ -1095,17 +1293,23 @@ static void playerLogin() {
     header("PLAYER LOGIN");
     cout << "Enter your name (letters, digits, _ ; max 15; case-sensitive): " << flush;
     string name = readLine();
-    if (!validName(name)) { cout << C_RED << "\nInvalid name.\n" << C_RESET; pauseEnter(); return; }
+    if (!validName(name)) { 
+        cout << C_RED << "\nInvalid name.\n" << C_RESET; 
+        pauseEnter(); 
+        return; 
+    }
 
     Player* p = gPlayers.find(name);
     if (p) {
         cout << C_GREEN << "\nWelcome back!\n" << C_RESET;
-    } else {
-        Player* similar = gPlayers.findCaseInsensitive(name);        // e.g. "alice" vs "Alice"
+    } 
+    else {
+        Player* similar = gPlayers.findCaseInsensitive(name);     
         if (similar && confirm("\nDid you mean \"" + similar->name + "\"?")) {
             p = similar;
             cout << C_GREEN << "\nWelcome back!\n" << C_RESET;
-        } else {
+        } 
+        else {
             p = gPlayers.insert(name);
             saveAll();
             cout << C_GREEN << "\nNew player registered. Welcome, " << name << "!\n" << C_RESET;
@@ -1115,16 +1319,15 @@ static void playerLogin() {
     playerMenu(p);
 }
 
-// ============================================================================
-//  17. ADMIN
-// ============================================================================
 static Player* lookupPlayer() {
     cout << "Enter player name: " << flush;
     string name = readLine();
     Player* p = gPlayers.find(name);
-    if (p) return p;
+    if (p) 
+    return p;
     Player* similar = gPlayers.findCaseInsensitive(name);
-    if (similar && confirm("\nDid you mean \"" + similar->name + "\"?")) return similar;
+    if (similar && confirm("\nDid you mean \"" + similar->name + "\"?")) 
+    return similar;
     cout << C_RED << "\nPlayer not found.\n" << C_RESET;
     return nullptr;
 }
@@ -1138,7 +1341,8 @@ static void adminPlayerDetails() {
         cout << "\n";
         int n = 0, total = p->recordCount();
         GameRecord** arr = total ? new GameRecord*[total] : nullptr;
-        for (GameRecord* r = p->head; r; r = r->next) arr[n++] = r;
+        for (GameRecord* r = p->head; r; r = r->next) 
+        arr[n++] = r;
         printRecords(arr, n);
         delete[] arr;
     }
@@ -1155,7 +1359,8 @@ static void adminDeletePlayer() {
             gPlayers.remove(name);
             saveAll();
             cout << C_GREEN << "Player deleted.\n" << C_RESET;
-        } else cout << "Cancelled.\n";
+        } 
+        else cout << "Cancelled.\n";
     }
     pauseEnter();
 }
@@ -1169,20 +1374,29 @@ static void adminDeleteHistory() {
             p->clearHistory();
             saveAll();
             cout << C_GREEN << "History deleted.\n" << C_RESET;
-        } else cout << "Cancelled.\n";
+        } 
+        else 
+        cout << "Cancelled.\n";
     }
     pauseEnter();
 }
 
 static void adminSystemStats() {
     header("SYSTEM STATISTICS");
-    int n; Player** players = gPlayers.toArray(n);
+    int n; 
+    Player** players = gPlayers.toArray(n);
     long long games = 0, survived = 0, points = 0, path = 0, best = 0;
     string bestName = "-";
     for (int i = 0; i < n; i++) {
         Stats s = players[i]->stats();
-        games += s.played; survived += s.survived; points += s.points; path += s.totalPath;
-        if (s.best > best) { best = s.best; bestName = players[i]->name; }
+        games += s.played; 
+        survived += s.survived; 
+        points += s.points; 
+        path += s.totalPath;
+        if (s.best > best) { 
+            best = s.best; 
+            bestName = players[i]->name; 
+        }
     }
     delete[] players;
     cout << left << setw(26) << "Registered players:" << n << "\n"
@@ -1216,16 +1430,26 @@ static void adminRegister() {
     cout << "Username (starts with a capital letter, letters/digits/_ only): " << flush;
     string user = readLine();
     if (!validName(user) || !isupper((unsigned char)user[0])) {
-        cout << C_RED << "\nInvalid username. It must start with a capital letter.\n" << C_RESET; pauseEnter(); return;
+        cout << C_RED << "\nInvalid username. It must start with a capital letter.\n" << C_RESET; 
+        pauseEnter(); 
+        return;
     }
-    if (gAdmins.find(user)) { cout << C_RED << "\nThat admin already exists.\n" << C_RESET; pauseEnter(); return; }
+    if (gAdmins.find(user)) { 
+        cout << C_RED << "\nThat admin already exists.\n" << C_RESET; 
+        pauseEnter(); 
+        return; 
+    }
 
     string pw = readPassword("Password (min 8 characters): ");
     if (pw.size() < 8 || pw.find(' ') != string::npos) {
-        cout << C_RED << "\nPassword must be at least 8 characters with no spaces.\n" << C_RESET; pauseEnter(); return;
+        cout << C_RED << "\nPassword must be at least 8 characters with no spaces.\n" << C_RESET; 
+        pauseEnter(); 
+        return;
     }
     if (pw != readPassword("Confirm password: ")) {
-        cout << C_RED << "\nPasswords do not match.\n" << C_RESET; pauseEnter(); return;
+        cout << C_RED << "\nPasswords do not match.\n" << C_RESET; 
+        pauseEnter(); 
+        return;
     }
     gAdmins.add(user, hashStr(pw));
     saveAll();
@@ -1240,13 +1464,18 @@ static void adminLogin() {
     Admin* a = gAdmins.find(user);
     if (!a) {
         Admin* similar = gAdmins.findCaseInsensitive(user);
-        if (similar) cout << C_YELLOW << "\nDid you mean \"" << similar->user << "\"? (usernames are case-sensitive)\n" << C_RESET;
-        else         cout << C_RED << "\nNo such admin. Register first.\n" << C_RESET;
+        if (similar) 
+            cout << C_YELLOW << "\nDid you mean \"" << similar->user << "\"? (usernames are case-sensitive)\n" << C_RESET;
+        else          
+        cout << C_RED << "\nNo such admin. Register first.\n" << C_RESET;
         pauseEnter();
         return;
     }
     for (int tries = 0; tries < 3; tries++) {
-        if (hashStr(readPassword("Password: ")) == a->hash) { adminMenu(); return; }
+        if (hashStr(readPassword("Password: ")) == a->hash) { 
+            adminMenu(); 
+            return; 
+        }
         cout << C_RED << "Wrong password.\n" << C_RESET;
     }
     pauseEnter();
@@ -1257,15 +1486,15 @@ static void adminEntry() {
         header("ADMIN");
         cout << "1. Login\n2. Register new admin\n3. Back\n\nEnter choice: " << flush;
         int c = readInt();
-        if (c == 1) adminLogin();
-        else if (c == 2) adminRegister();
-        else if (c == 3) return;
+        if (c == 1) 
+        adminLogin();
+        else if (c == 2) 
+        adminRegister();
+        else if (c == 3) 
+        return;
     }
 }
 
-// ============================================================================
-//  18. MAIN
-// ============================================================================
 int main() {
     srand((unsigned)time(nullptr));
     Term::init();
@@ -1275,10 +1504,14 @@ int main() {
         header("Food Hunt");
         cout << "1. Player Login\n2. Admin\n3. Rules\n4. Exit\n\nEnter choice: " << flush;
         int c = readInt();
-        if (c == 1) playerLogin();
-        else if (c == 2) adminEntry();
-        else if (c == 3) printRules();
-        else if (c == 4) break;
+        if (c == 1) 
+        playerLogin();
+        else if (c == 2) 
+        adminEntry();
+        else if (c == 3) 
+        printRules();
+        else if (c == 4) 
+        break;
     }
     saveAll();
     Term::clearScreen();
