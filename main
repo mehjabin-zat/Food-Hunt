@@ -29,15 +29,8 @@
 #include <cstring>
 #include <algorithm>
 
-#ifdef _WIN32
-  #define NOMINMAX
-  #include <windows.h>
-  #include <conio.h>
-#else
-  #include <termios.h>
-  #include <unistd.h>
-  #include <sys/select.h>
-#endif
+#include <windows.h>
+#include <conio.h>
 
 using namespace std;
 
@@ -47,16 +40,13 @@ using namespace std;
 enum { K_UP = 1001, K_DOWN, K_LEFT, K_RIGHT };
 
 namespace Term {
-    bool eofHit = false;
-
-#ifdef _WIN32
     void init() {
-        SetConsoleOutputCP(CP_UTF8);
+        SetConsoleOutputCP(CP_UTF8); // for printing special characters
         HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
         DWORD mode = 0;
         GetConsoleMode(h, &mode);
         SetConsoleMode(h, mode | 0x0004);              // enable ANSI colours
-        system("mode con: cols=80 lines=32");          // window big enough for the board
+        system("mode con: cols=100 lines=32");          // window big enough for the board
     }
     void clearScreen() {                               // wipe the whole console
         HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -69,7 +59,6 @@ namespace Term {
         SetConsoleCursorPosition(h, home);
         cout << flush;
     }
-    void raw(bool) {}
     int readKey() {                                    // 0 = no key pressed
         if (!_kbhit()) return 0;
         int c = _getch();
@@ -85,50 +74,10 @@ namespace Term {
     void flushInput() { while (_kbhit()) _getch(); }
     void sleepMs(int ms) { Sleep(ms); }
     void beep(int freq, int ms) { Beep(freq, ms); }
-#else
-    termios saved;
-    bool haveSaved = false, rawOn = false;
-
-    void init() { if (tcgetattr(STDIN_FILENO, &saved) == 0) haveSaved = true; }
-    void clearScreen() { cout << "\033[2J\033[H" << flush; }
-    void raw(bool on) {                                // raw = keys arrive without Enter
-        if (!haveSaved || on == rawOn) return;
-        termios t = saved;
-        if (on) t.c_lflag &= ~(ICANON | ECHO);
-        else    t = saved;
-        tcsetattr(STDIN_FILENO, TCSANOW, &t);
-        rawOn = on;
-    }
-    int readByte() {
-        fd_set f; FD_ZERO(&f); FD_SET(STDIN_FILENO, &f);
-        timeval tv = { 0, 0 };
-        if (select(STDIN_FILENO + 1, &f, nullptr, nullptr, &tv) <= 0) return -1;
-        unsigned char c;
-        int n = (int)read(STDIN_FILENO, &c, 1);
-        if (n == 1) return c;
-        if (n == 0) eofHit = true;
-        return -1;
-    }
-    int readKey() {
-        int c = readByte();
-        if (c < 0) return 0;
-        if (c != 27) return c;
-        usleep(2000);                                  // arrow keys arrive as ESC [ A/B/C/D
-        if (readByte() != '[') return 0;
-        switch (readByte()) {
-            case 'A': return K_UP;    case 'B': return K_DOWN;
-            case 'C': return K_RIGHT; case 'D': return K_LEFT;
-        }
-        return 0;
-    }
-    void flushInput() { if (haveSaved) tcflush(STDIN_FILENO, TCIFLUSH); }
-    void sleepMs(int ms) { usleep(ms * 1000); }
-    void beep(int, int) { cout << '\a' << flush; }
-#endif
 
     // Gameplay refresh: jump to the top-left and overwrite the previous frame.
     void gameHome() { cout << "\033[H" << flush; }
-    void shutdown() { raw(false); cout << "\033[0m\033[?25h" << flush; }
+    void shutdown() { cout << "\033[0m\033[?25h" << flush; }
 }
 
 // ANSI colours
@@ -143,28 +92,6 @@ namespace Term {
 // ============================================================================
 //  2. SMALL HELPERS
 // ============================================================================
-static string fmtNum(long long v) {                    // 1048576 -> "1,048,576"
-    string s = to_string(v), out;
-    for (int i = 0; i < (int)s.size(); i++) {
-        if (i > 0 && (s.size() - i) % 3 == 0) out += ',';
-        out += s[i];
-    }
-    return out;
-}
-static string fmtShort(long long v) {                  // 1,234,567,890,123 -> "1.23T"
-    if (v < 1000000LL) return fmtNum(v);
-    const char* unit[3] = { "M", "B", "T" };
-    double x = v / 1e6;
-    int u = 0;
-    while (x >= 1000 && u < 2) { x /= 1000; u++; }
-    char buf[32];
-    snprintf(buf, sizeof buf, "%.2f%s", x, unit[u]);
-    return buf;
-}
-static string lowerStr(string s) {
-    for (size_t i = 0; i < s.size(); i++) s[i] = (char)tolower((unsigned char)s[i]);
-    return s;
-}
 static string rep(const string& s, int n) { string r; for (int i = 0; i < n; i++) r += s; return r; }
 static int visibleLen(const string& s) {               // characters on screen (UTF-8 aware)
     int n = 0;
@@ -194,8 +121,6 @@ class Stack {
 public:
     Stack() : topNode(nullptr), count(0) {}
     ~Stack() { T tmp; while (pop(tmp)) {} }
-    Stack(const Stack&) = delete;
-    Stack& operator=(const Stack&) = delete;
 
     void push(const T& v) { Node* n = new Node; n->val = v; n->next = topNode; topNode = n; count++; }
     bool pop(T& out) {
@@ -218,8 +143,6 @@ class Queue {
 public:
     Queue() : front(nullptr), back(nullptr) {}
     ~Queue() { T tmp; while (dequeue(tmp)) {} }
-    Queue(const Queue&) = delete;
-    Queue& operator=(const Queue&) = delete;
 
     void enqueue(const T& v) {
         Node* n = new Node; n->val = v; n->next = nullptr;
@@ -274,8 +197,6 @@ class Snake {
 public:
     Snake() : head(nullptr), tail(nullptr), len(0) {}
     ~Snake() { clear(); }
-    Snake(const Snake&) = delete;
-    Snake& operator=(const Snake&) = delete;
 
     void addHead(int r, int c) {
         SnakeNode* n = new SnakeNode;
@@ -375,8 +296,6 @@ public:
 
     Player(const string& n) : name(n), head(nullptr), tail(nullptr), nextId(1) {}
     ~Player() { clearHistory(); }
-    Player(const Player&) = delete;
-    Player& operator=(const Player&) = delete;
 
     void addRecord(GameRecord r) {                     // append at the tail
         if (r.id == 0) r.id = nextId;
@@ -437,11 +356,11 @@ class PlayerTree {
         }
         return n;
     }
-    static Player* findIgnoreCase(TreeNode* n, const string& lname) {
+    static Player* findIgnoreCase(TreeNode* n, const string& name) {
         if (!n) return nullptr;
-        if (lowerStr(n->p->name) == lname) return n->p;
-        Player* a = findIgnoreCase(n->left, lname);
-        return a ? a : findIgnoreCase(n->right, lname);
+        if (_stricmp(n->p->name.c_str(), name.c_str()) == 0) return n->p;
+        Player* a = findIgnoreCase(n->left, name);
+        return a ? a : findIgnoreCase(n->right, name);
     }
     static void inorder(TreeNode* n, Player** arr, int& i) {
         if (!n) return;
@@ -467,19 +386,24 @@ public:
         }
         return nullptr;
     }
-    Player* findCaseInsensitive(const string& name) const { return findIgnoreCase(root, lowerStr(name)); }
+    Player* findCaseInsensitive(const string& name) const { return findIgnoreCase(root, name); }
+
 
     Player* insert(const string& name) {
-        if (find(name)) return nullptr;
+        if (find(name)) return nullptr;                // names must be unique
         TreeNode* n = new TreeNode;
         n->p = new Player(name); n->left = n->right = nullptr;
         cnt++;
         if (!root) { root = n; return n->p; }
         TreeNode* cur = root;
         while (true) {
-            TreeNode*& side = (name < cur->p->name) ? cur->left : cur->right;
-            if (!side) { side = n; break; }
-            cur = side;
+            if (name < cur->p->name) {
+                if (!cur->left) { cur->left = n; break; }
+                cur = cur->left;
+            } else {
+                if (!cur->right) { cur->right = n; break; }
+                cur = cur->right;
+            }
         }
         return n->p;
     }
@@ -515,15 +439,13 @@ class AdminList {
 public:
     AdminList() : head(nullptr), cnt(0) {}
     ~AdminList() { while (head) { Admin* n = head->next; delete head; head = n; } }
-    AdminList(const AdminList&) = delete;
-    AdminList& operator=(const AdminList&) = delete;
 
     Admin* find(const string& u) const {
         for (Admin* a = head; a; a = a->next) if (a->user == u) return a;
         return nullptr;
     }
     Admin* findCaseInsensitive(const string& u) const {
-        for (Admin* a = head; a; a = a->next) if (lowerStr(a->user) == lowerStr(u)) return a;
+        for (Admin* a = head; a; a = a->next) if (_stricmp(a->user.c_str(), u.c_str()) == 0) return a;
         return nullptr;
     }
     void add(const string& u, unsigned long long h) {  // append at the end
@@ -630,17 +552,11 @@ static int readInt() {                                 // -1 if not a number
     for (size_t i = 0; i < s.size(); i++) if (!isdigit((unsigned char)s[i])) return -1;
     return atoi(s.c_str());
 }
-static long long readNumber() {                        // -1 if not a number (up to 15 digits)
-    string s = readLine();
-    if (s.empty() || s.size() > 15) return -1;
-    for (size_t i = 0; i < s.size(); i++) if (!isdigit((unsigned char)s[i])) return -1;
-    return atoll(s.c_str());
-}
 static void pauseEnter() { cout << C_GREY << "\nPress Enter to continue..." << C_RESET << flush; readLine(); }
 static bool confirm(const string& q) {
     cout << C_YELLOW << q << " (Y/N): " << C_RESET << flush;
-    string s = lowerStr(readLine());
-    return s == "y" || s == "yes";
+    string s = readLine();
+    return _stricmp(s.c_str(), "y") == 0 || _stricmp(s.c_str(), "yes") == 0;
 }
 static void header(const string& title) {
     Term::clearScreen();
@@ -651,16 +567,15 @@ static void header(const string& title) {
 }
 static string readPassword(const string& prompt) {     // shows * while typing
     cout << prompt << flush;
-    Term::raw(true); Term::flushInput();
+    Term::flushInput();
     string s;
-    while (!Term::eofHit) {
+    while (true) {
         int k = Term::readKey();
         if (!k) { Term::sleepMs(10); continue; }
         if (k == '\n') break;
         if ((k == 8 || k == 127) && !s.empty()) { s.erase(s.size() - 1); cout << "\b \b" << flush; }
         else if (k >= 32 && k < 127) { s += (char)k; cout << '*' << flush; }
     }
-    Term::raw(false);
     cout << "\n";
     return s;
 }
@@ -681,14 +596,14 @@ static void printRules() {
         "  body. The snake then restarts with its starting length; score\n"
         "  and food progress are kept. Game over when all 3 are lost.\n\n"
         "MILESTONE\n"
-        "  Reach 2^40 = " << fmtNum(TARGET) << " points to complete the game.\n\n"
+        "  Reach 2^40 = " << to_string(TARGET) << " points to complete the game.\n\n"
         "DIFFICULTY\n";
     const char* names[3] = { "Easy  ", "Medium", "Hard  " };
     for (int i = 0; i < 3; i++)
         cout << "  " << names[i] << " : starts " << DIFFS[i].startLen << " long at " << DIFFS[i].startDelay
              << " ms/move; every food = +" << DIFFS[i].grow << " length, " << DIFFS[i].accel << " ms faster\n";
     cout << "\nLEADERBOARD\n"
-        "  Rank = points + " << fmtNum(SURVIVE_BONUS) << " x games survived + efficiency bonus.\n"
+        "  Rank = points + " << to_string(SURVIVE_BONUS) << " x games survived + efficiency bonus.\n"
         "  Efficiency bonus = points x 1000 / (path + 1000), so reaching\n"
         "  the same points with less total path covered ranks higher.\n";
     pauseEnter();
@@ -698,18 +613,18 @@ static void printRules() {
 //  14. DRAWING THE BOARD AND POPUPS
 // ============================================================================
 static string boardString(const int b[ROWS][COLS], int headR, int headC) {
-    string s = string(C_GREY) + "┌" + rep("─", COLS * 2) + "┐" + C_RESET + "\033[K\n";
+    string s = string(C_GREY) + "┌" + rep("─", COLS * 2) + "┐" + C_RESET + "\n";
     for (int r = 0; r < ROWS; r++) {
         s += string(C_GREY) + "│" + C_RESET;
         for (int c = 0; c < COLS; c++) {
-            if (b[r][c] == SNAKE)     s += (r == headR && c == headC) ? "\033[48;5;226m  \033[0m"   // yellow head
-                                                                      : "\033[42m  \033[0m";        // green body
-            else if (b[r][c] == FOOD) s += "\033[41m  \033[0m";                                    // red food
-            else                      s += ((r + c) & 1) ? "\033[48;5;236m  \033[0m" : "\033[48;5;235m  \033[0m";
+            if (b[r][c] == SNAKE && r == headR && c == headC) s += "\033[48;5;226m  \033[0m";   // head: yellow
+            else if (b[r][c] == SNAKE)                        s += "\033[42m  \033[0m";          // body: green
+            else if (b[r][c] == FOOD)                         s += "\033[41m  \033[0m";          // food: red
+             else                      s += ((r + c) & 1) ? "\033[48;5;236m  \033[0m" : "\033[48;5;235m  \033[0m";
         }
-        s += string(C_GREY) + "│" + C_RESET + "\033[K\n";
+        s += string(C_GREY) + "│" + C_RESET + "\n";
     }
-    s += string(C_GREY) + "└" + rep("─", COLS * 2) + "┘" + C_RESET + "\033[K\n";
+    s += string(C_GREY) + "└" + rep("─", COLS * 2) + "┘" + C_RESET + "\n";
     return s;
 }
 
@@ -808,27 +723,36 @@ class Game {
         snake.addHead(nr, nc); board[nr][nc] = SNAKE;
         pathCovered++;
         maxLen = max(maxLen, snake.length());
-
-        if (!eating) return STEP_OK;
+        if (!eating) {
+            if (foodR >= 0) foodDist = Graph::shortestPath(board, snake.headR(), snake.headC(), foodR, foodC);
+            return STEP_OK;
+        }
         growLeft += DIFFS[diff].grow - 1;                                       // this move already grew by 1
         score += foodVal;
-        msg = "FOOD +" + fmtNum(foodVal); msgMs = 1200;
+        msg = "FOOD +" + to_string(foodVal); msgMs = 1200;
         foodVal *= 2; foodEaten++;
         delay = max(DIFFS[diff].minDelay, delay - DIFFS[diff].accel);           // speed up
         placeFood();
         return STEP_ATE;
     }
 
-    void render() const {
+        void render() const {
         string hearts;
-        for (int i = 0; i < 3; i++) hearts += string(i < lives ? C_RED : C_GREY) + "♥ " + C_RESET;
+        for (int i = 0; i < 3; i++) {
+            if (i < lives) hearts += string(C_RED) + "♥ " + C_RESET;
+            else           hearts += string(C_GREY) + "♥ " + C_RESET;
+        }
+        string pathText = "-";
+        if (foodDist >= 0) pathText = to_string(foodDist) + " steps";
+        string msgText = "";
+        if (msgMs > 0) msgText = string(C_GREEN) + msg + C_RESET;
+
         string s = boardString(board, snake.headR(), snake.headC());
-        s += " Score: " + string(C_YELLOW) + fmtNum(score) + C_RESET + "     Lives: " + hearts + "\033[K\n";
+        s += " Score: " + string(C_YELLOW) + to_string(score) + C_RESET + "     Lives: " + hearts + "\033[K\n";
         s += " Length: " + to_string(snake.length()) + "     Difficulty: " + DIFFS[diff].name + "\033[K\n";
         s += " Speed: " + to_string(delay) + " ms/move\033[K\n";
-        s += " Next food: +" + fmtNum(foodVal) + "     Shortest path: " +
-             (foodDist >= 0 ? to_string(foodDist) + " steps" : string("-")) + "\033[K\n";
-        s += " " + (msgMs > 0 ? string(C_GREEN) + msg + C_RESET : string("")) + "\033[K\n";
+        s += " Next food: +" + to_string(foodVal) + "     Shortest path: " + pathText + "\033[K\n";
+        s += " " + msgText + "\033[K\n";
         s += string(C_GREY) + " Arrows/WASD = move    P = pause    Q = quit" + C_RESET + "\033[K\033[J";
         Term::gameHome();
         cout << s << flush;
@@ -861,6 +785,26 @@ class Game {
         Move m = { (char)d, ate, collided, grewLast, foodR, foodC };
         replay.moves.push(m);
     }
+        // Put the replay board back at the start position (snake + food).
+    void replayRestart(int b[ROWS][COLS], Snake& s, int fr, int fc) {
+        s.clear();
+        for (int i = 0; i < ROWS; i++) for (int j = 0; j < COLS; j++) b[i][j] = EMPTY;
+        for (int i = DIFFS[diff].startLen - 1; i >= 0; i--) {
+            s.addHead(ROWS / 2, COLS / 3 - i);
+            b[ROWS / 2][COLS / 3 - i] = SNAKE;
+        }
+        if (fr >= 0) b[fr][fc] = FOOD;
+    }
+    // Draw one replay frame.
+    void replayDraw(const int b[ROWS][COLS], const Snake& s, int number, int total, long long sc, const string& note) const {
+        string out = boardString(b, s.headR(), s.headC());
+        out += string(C_CYAN) + " REPLAY" + C_RESET + "   Move " + to_string(number) + " / " + to_string(total) +
+               "   Score: " + to_string(sc) + "\033[K\n";
+        out += " " + string(C_YELLOW) + note + C_RESET + "\033[K\n";
+        out += string(C_GREY) + " Q = stop replay" + C_RESET + "\033[K\033[J";
+        Term::gameHome();
+        cout << out << flush;
+    }
 
 public:
     ReplayData replay;
@@ -882,8 +826,9 @@ public:
 
     // The main loop. Returns RES_LOST, RES_SURVIVED or RES_QUIT.
     int run() {
-        Term::raw(true); Term::flushInput();
+    Term::flushInput();
         cout << "\033[?25l";
+        Term::clearScreen();
         render();
         while (true) {
             // 1. collect key presses for one tick
@@ -922,7 +867,7 @@ public:
             if (res == STEP_ATE) Term::beep(880, 35);
             record(used, res == STEP_ATE, false);
             render();
-            if (score >= TARGET || foodR < 0) return RES_SURVIVED;             // 2^20 reached
+            if (score >= TARGET || foodR < 0) return RES_SURVIVED;             // 2^40 reached
         }
     }
 
@@ -930,12 +875,12 @@ public:
         render();
         if (res == RES_LOST) {
             Term::beep(300, 120); Term::beep(150, 250);
-            string l[8] = { "GAME OVER", "", "Score: " + fmtNum(score), "Length: " + to_string(maxLen), "",
+            string l[8] = { "GAME OVER", "", "Score: " + to_string(score), "Length: " + to_string(maxLen), "",
                             "1. Play Again", "2. Watch Replay", "3. Return to Menu" };
             showPopup(4, 32, l, 8, "\033[1;97;41m");
         } else {
             for (int i = 0; i < 6; i++) Term::beep(500 + i * 120, 60);
-            string l[7] = { "★ MILESTONE ★", "", fmtNum(TARGET) + " POINTS!", "Score: " + fmtNum(score), "",
+            string l[7] = { "★ MILESTONE ★", "", to_string(TARGET) + " POINTS!", "Score: " + to_string(score), "",
                             "1. Play Again", "2. Return to Menu" };
             showPopup(4, 32, l, 7, "\033[1;30;103m");
         }
@@ -944,43 +889,30 @@ public:
     // Replay: the stack gives the LAST move first, so we pour it into a second stack
     // (which reverses it) and play from there. Each played move is pushed back, so the
     // original stack is restored and the replay can be watched again.
-    void playReplay() {
+        void playReplay() {
         Stack<Move> forward; Move m;
         int total = replay.moves.size();
-        while (replay.moves.pop(m)) forward.push(m);
+        while (replay.moves.pop(m)) forward.push(m);              // reverse the order
 
         int b[ROWS][COLS]; Snake s;
         long long sc = 0, foodVal2 = 1;
         int curFoodR = replay.startFoodR, curFoodC = replay.startFoodC, number = 0;
 
-        auto restart = [&](int fr, int fc) {           // snake at its start position + food
-            s.clear();
-            for (int i = 0; i < ROWS; i++) for (int j = 0; j < COLS; j++) b[i][j] = EMPTY;
-            for (int i = DIFFS[diff].startLen - 1; i >= 0; i--) { s.addHead(ROWS / 2, COLS / 3 - i); b[ROWS / 2][COLS / 3 - i] = SNAKE; }
-            if (fr >= 0) b[fr][fc] = FOOD;
-        };
-        auto draw = [&](const string& note) {
-            string out = boardString(b, s.headR(), s.headC());
-            out += string(C_CYAN) + " REPLAY" + C_RESET + "   Move " + to_string(number) + " / " + to_string(total) +
-                   "   Score: " + fmtNum(sc) + "\033[K\n";
-            out += " " + string(C_YELLOW) + note + C_RESET + "\033[K\n";
-            out += string(C_GREY) + " Q = stop replay" + C_RESET + "\033[K\033[J";
-            Term::gameHome();
-            cout << out << flush;
-        };
-
-        restart(curFoodR, curFoodC);
+        Term::clearScreen();
         cout << "\033[?25l";
-        draw("");
+        replayRestart(b, s, curFoodR, curFoodC);
+        replayDraw(b, s, number, total, sc, "");
+
         bool stop = false;
         while (forward.pop(m)) {
-            replay.moves.push(m);                      // put it back
+            replay.moves.push(m);                                 // put it back
             if (stop) continue;
             number++;
             if (m.collided) {
-                draw("LIFE LOST"); Term::sleepMs(500);
+                replayDraw(b, s, number, total, sc, "LIFE LOST");
+                Term::sleepMs(500);
                 curFoodR = m.foodR; curFoodC = m.foodC;
-                restart(curFoodR, curFoodC);
+                replayRestart(b, s, curFoodR, curFoodC);
             } else {
                 int nr = s.headR() + DR[(int)m.dir], nc = s.headC() + DC[(int)m.dir];
                 if (m.ate) { sc += foodVal2; foodVal2 *= 2; }
@@ -991,7 +923,9 @@ public:
                     if (curFoodR >= 0) b[curFoodR][curFoodC] = FOOD;
                 }
             }
-            draw(m.ate ? "FOOD!" : "");
+            string note = "";
+            if (m.ate) note = "FOOD!";
+            replayDraw(b, s, number, total, sc, note);
             for (int w = 0; w < 70 && !stop; w += 10) {
                 int k = Term::readKey();
                 if (k == 'q' || k == 'Q') stop = true;
@@ -1012,7 +946,7 @@ static void printRecords(GameRecord** arr, int n) {
     cout << rep("-", 77) << "\n";
     for (int i = 0; i < n; i++) {
         GameRecord* r = arr[i];
-        cout << left << setw(6) << r->id << setw(11) << diffName(r->diff) << setw(19) << fmtNum(r->score)
+        cout << left << setw(6) << r->id << setw(11) << diffName(r->diff) << setw(19) << to_string(r->score)
              << setw(7) << r->maxLen << setw(6) << r->food << setw(9) << r->pathCovered
              << setw(11) << r->livesLost << resultName(r->result) << "\n";
     }
@@ -1022,8 +956,8 @@ static void printStats(Player* p) {
     Stats s = p->stats();
     cout << left << setw(24) << "Games played:" << s.played << "\n"
          << setw(24) << "Games survived:" << s.survived << "\n"
-         << setw(24) << "Total points:" << fmtNum(s.points) << "\n"
-         << setw(24) << "Best score:" << fmtNum(s.best) << "\n"
+         << setw(24) << "Total points:" << to_string(s.points) << "\n"
+         << setw(24) << "Best score:" << to_string(s.best) << "\n"
          << setw(24) << "Highest snake length:" << s.highLen << "\n"
          << setw(24) << "Total food eaten:" << s.food << "\n"
          << setw(24) << "Total lives lost:" << s.lives << "\n"
@@ -1039,14 +973,14 @@ static void historyMenu(Player* p) {
         if (ch == 5) return;
         if (ch < 1 || ch > 4) continue;
 
-        long long limit = 0; int wanted = 0;                     // filter settings
+        int limit = 0, wanted = 0;                     // filter settings
         if (ch == 2) {
             cout << "Difficulty (1=Easy 2=Medium 3=Hard): " << flush;
             wanted = readInt();
             if (wanted < 1 || wanted > 3) continue;
         } else if (ch == 3) {
             cout << "Minimum score: " << flush;
-            limit = readNumber();
+            limit = readInt();
             if (limit < 0) continue;
         }
 
@@ -1080,20 +1014,19 @@ static void showLeaderboard() {
     delete[] players;
     if (m == 0) { cout << "  No games have been played yet.\n"; delete[] e; pauseEnter(); return; }
 
-    quickSort(e, 0, m - 1);
+        quickSort(e, 0, m - 1);
     cout << C_YELLOW << left << setw(4) << "#" << setw(15) << "Player" << setw(5) << "G" << setw(6) << "Surv"
-         << setw(10) << "Points" << setw(10) << "Best" << setw(6) << "Len" << setw(6) << "Food"
+         << setw(16) << "Points" << setw(16) << "Best" << setw(6) << "Len" << setw(6) << "Food"
          << setw(7) << "Lives" << "Path" << C_RESET << "\n";
-    cout << rep("-", 75) << "\n";
+    cout << rep("-", 89) << "\n";
     for (int i = 0; i < m && i < 20; i++) {
         const Stats& s = e[i].stats;
         cout << left << setw(4) << (i + 1) << setw(15) << e[i].name << setw(5) << s.played << setw(6) << s.survived
-             << setw(10) << fmtShort(s.points) << setw(10) << fmtShort(s.best) << setw(6) << s.highLen
+             << setw(16) << s.points << setw(16) << s.best << setw(6) << s.highLen
              << setw(6) << s.food << setw(7) << s.lives << s.totalPath << "\n";
     }
     cout << C_GREY << "\nG = games, Surv = survived, Len = highest length, Lives = lives lost, Path = total moves\n"
-         << "Points/Best in short form (M, B, T); exact values are under Player Details / My Statistics.\n"
-         << "Rank = points + " << fmtNum(SURVIVE_BONUS) << " x survived + points x 1000 / (path + 1000)\n" << C_RESET;
+         << "Rank = points + " << SURVIVE_BONUS << " x survived + points x 1000 / (path + 1000)\n" << C_RESET;
     delete[] e;
     pauseEnter();
 }
@@ -1102,8 +1035,7 @@ static int chooseDifficulty() {
     header("SELECT DIFFICULTY");
     const char* names[3] = { "Easy  ", "Medium", "Hard  " };
     for (int i = 0; i < 3; i++)
-        cout << i + 1 << ". " << names[i] << " - " << DIFFS[i].startDelay << " ms/move, snake " << DIFFS[i].startLen
-             << " long, +" << DIFFS[i].grow << " length and " << DIFFS[i].accel << " ms faster per food\n";
+        cout << i + 1 << ". " << names[i] << "\n";
     cout << "4. Back\n\nEnter choice: " << flush;
     int c = readInt();
     return (c >= 1 && c <= 3) ? c - 1 : -1;
@@ -1112,7 +1044,6 @@ static int chooseDifficulty() {
 static char waitChoice(const char* valid) {            // wait for one of the given keys
     while (true) {
         int k = Term::readKey();
-        if (Term::eofHit) return valid[strlen(valid) - 1];
         for (const char* v = valid; *v; v++) if (k == *v) return *v;
         Term::sleepMs(10);
     }
@@ -1266,9 +1197,9 @@ static void adminSystemStats() {
          << setw(26) << "Admin accounts:" << gAdmins.count() << "\n"
          << setw(26) << "Total games played:" << games << "\n"
          << setw(26) << "Total games survived:" << survived << "\n"
-         << setw(26) << "Total points scored:" << fmtNum(points) << "\n"
+         << setw(26) << "Total points scored:" << to_string(points) << "\n"
          << setw(26) << "Total path covered:" << path << " moves\n"
-         << setw(26) << "Highest single score:" << fmtNum(best) << " (" << bestName << ")\n";
+         << setw(26) << "Highest single score:" << to_string(best) << " (" << bestName << ")\n";
     pauseEnter();
 }
 
@@ -1349,7 +1280,7 @@ int main() {
     atexit(Term::shutdown);
     loadAll();
     while (true) {
-        header("SNAKE GAME");
+        header("Food Hunt");
         cout << "1. Player Login\n2. Admin\n3. Rules\n4. Exit\n\nEnter choice: " << flush;
         int c = readInt();
         if (c == 1) playerLogin();
