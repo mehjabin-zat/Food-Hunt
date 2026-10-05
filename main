@@ -23,7 +23,6 @@
 #include <iomanip>
 #include <fstream>
 #include <string>
-#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <cstring>
@@ -49,15 +48,8 @@ namespace Term {
         system("mode con: cols=100 lines=32");          // window big enough for the board
     }
     void clearScreen() {                               // wipe the whole console
-        HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-        CONSOLE_SCREEN_BUFFER_INFO ci;
-        if (h == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo(h, &ci)) { cout << "\033[2J\033[H" << flush; return; }
-        DWORD cells = (DWORD)ci.dwSize.X * (DWORD)ci.dwSize.Y, written = 0;
-        COORD home = { 0, 0 };
-        FillConsoleOutputCharacterA(h, ' ', cells, home, &written);
-        FillConsoleOutputAttribute(h, ci.wAttributes, cells, home, &written);
-        SetConsoleCursorPosition(h, home);
-        cout << flush;
+        cout << flush; 
+        system("cls");
     }
     int readKey() {                                    // 0 = no key pressed
         if (!_kbhit()) return 0;
