@@ -69,20 +69,20 @@ namespace Term {
 #define C_WHITE  "\033[1;97m"
 
 
-static string rep(string s, int n) { 
+ string rep(string s, int n) { 
     string r; 
     for (int i = 0; i < n; i++) 
     r += s; 
     return r; 
 }
 
-static unsigned long long hashStr(string s) {   
+ unsigned long long hashStr(string s) {   
     unsigned long long h = 5381;
     for (size_t i = 0; i < s.size(); i++) 
     h = h * 33 + (unsigned char)s[i];
     return h;
 }
-static bool validName(string s) {            
+ bool validName(string s) {            
     if (s.empty() || s.size() > 15) 
     return false;
     for (size_t i = 0; i < s.size(); i++)
@@ -178,13 +178,13 @@ const Difficulty DIFFS[3] = {
     { "MEDIUM", 4, 100, 15, 40, 3 },
     { "HARD",   6,  70, 20, 25, 4 }
 };
-static const char* resultName(int r) { 
+ const char* resultName(int r) { 
     return r == RES_LOST ? "Lost" : (r == RES_SURVIVED ? "Survived" : "Quit"); 
 }
-static string diffName(int d) { 
+ string diffName(int d) { 
     return (d >= 0 && d < 3) ? DIFFS[d].name : "?"; 
 }
-static bool inBoard(int r, int c) { 
+ bool inBoard(int r, int c) { 
     return r >= 0 && r < ROWS && c >= 0 && c < COLS; 
 }
 
@@ -212,9 +212,11 @@ public:
         n->c = c; 
         n->prev = nullptr; 
         n->next = head;
-        if (head) head->prev = n;
+        if (head) 
+            head->prev = n;
         head = n;
-        if (!tail) tail = n;
+        if (!tail) 
+            tail = n;
         len++;
     }
     void removeTail(int& r, int& c) {
@@ -264,8 +266,8 @@ namespace Graph {
     int shortestPath(const int b[ROWS][COLS], int sr, int sc, int tr, int tc) {
         int dist[ROWS][COLS];
         for (int i = 0; i < ROWS; i++) 
-        for (int j = 0; j < COLS; j++) 
-        dist[i][j] = -1;
+            for (int j = 0; j < COLS; j++) 
+                dist[i][j] = -1;
         Queue<Cell> q;
         Cell start = { 
             sr, sc 
@@ -275,7 +277,7 @@ namespace Graph {
         Cell cur;
         while (q.dequeue(cur)) {
             if (cur.r == tr && cur.c == tc) 
-            return dist[tr][tc];
+                return dist[tr][tc];
             for (int d = 0; d < 4; d++) {
                 int nr = cur.r + DR[d], nc = cur.c + DC[d];
                 if (!inBoard(nr, nc) || dist[nr][nc] != -1 || b[nr][nc] == SNAKE) 
@@ -292,8 +294,8 @@ namespace Graph {
 
     void reachable(const int b[ROWS][COLS], int sr, int sc, bool seen[ROWS][COLS]) {
         for (int i = 0; i < ROWS; i++) 
-        for (int j = 0; j < COLS; j++) 
-        seen[i][j] = false;
+            for (int j = 0; j < COLS; j++) 
+                seen[i][j] = false;
         Stack<Cell> st;
         Cell start = { 
             sr, sc };
@@ -529,14 +531,14 @@ public:
 
     Admin* find(string u) {
         for (Admin* a = head; a; a = a->next) 
-        if (a->user == u) 
-        return a;
+            if (a->user == u) 
+                return a;
         return nullptr;
     }
     Admin* findCaseInsensitive(string u) {
         for (Admin* a = head; a; a = a->next) 
-        if (_stricmp(a->user.c_str(), u.c_str()) == 0) 
-        return a;
+            if (_stricmp(a->user.c_str(), u.c_str()) == 0) 
+                return a;
         return nullptr;
     }
     void add(string u, unsigned long long h) {  
@@ -545,11 +547,11 @@ public:
         n->hash = h; 
         n->next = nullptr;
         if (!head) 
-        head = n;
+            head = n;
         else { 
             Admin* t = head; 
             while (t->next) 
-            t = t->next; 
+                t = t->next; 
             t->next = n; 
         }
         cnt++;
@@ -568,22 +570,22 @@ struct LBEntry {
     long long rank; 
 };
 
-static long long efficiencyBonus(long long points, long long path) {
+ long long efficiencyBonus(long long points, long long path) {
     if (points <= 0 || path <= 0) 
     return 0;
     return (points * 1000LL) / (path + 1000LL);
 }
-static long long rankScore(Stats s) {
+ long long rankScore(Stats s) {
     return s.points + SURVIVE_BONUS * s.survived + efficiencyBonus(s.points, s.totalPath);
 }
-static bool ranksBefore(LBEntry a, LBEntry b) {      
+ bool ranksBefore(LBEntry a, LBEntry b) {      
     if (a.rank != b.rank) 
     return a.rank > b.rank;
     if (a.stats.survived != b.stats.survived) 
     return a.stats.survived > b.stats.survived;
     return a.name < b.name;
 }
-static void quickSort(LBEntry* a, int lo, int hi) {
+ void quickSort(LBEntry* a, int lo, int hi) {
     if (lo >= hi) 
     return;
     swap(a[(lo + hi) / 2], a[hi]);                    
@@ -594,7 +596,7 @@ static void quickSort(LBEntry* a, int lo, int hi) {
     quickSort(a, lo, i - 1);
     quickSort(a, i + 1, hi);
 }
-static void insertionSortByScore(GameRecord** a, int n) {
+ void insertionSortByScore(GameRecord** a, int n) {
     for (int i = 1; i < n; i++) {
         GameRecord* key = a[i];
         int j = i - 1;
@@ -605,14 +607,14 @@ static void insertionSortByScore(GameRecord** a, int n) {
     }
 }
 
-static PlayerTree gPlayers;
-static AdminList  gAdmins;
+ PlayerTree gPlayers;
+ AdminList  gAdmins;
 
-static const char* F_PLAYERS = "players.dat";
-static const char* F_ADMINS  = "admins.dat";
-static const char* F_HISTORY = "history.dat";
+ const char* F_PLAYERS = "players.dat";
+ const char* F_ADMINS  = "admins.dat";
+ const char* F_HISTORY = "history.dat";
 
-static void saveAll() {
+ void saveAll() {
     ofstream fp(F_PLAYERS), fh(F_HISTORY), fa(F_ADMINS);
     gPlayers.savePreorder(fp);
     int n; 
@@ -626,7 +628,7 @@ static void saveAll() {
     fa << a->user << " " << a->hash << "\n";
 }
 
-static void loadAll() {
+ void loadAll() {
     string name;
     ifstream fp(F_PLAYERS);
     while (fp >> name) 
@@ -643,7 +645,7 @@ static void loadAll() {
     while (fa >> name >> h) 
     gAdmins.add(name, h);
 }
-static string readLine() {
+ string readLine() {
     Term::flushInput();
     string s;
     if (!getline(cin, s)) { 
@@ -653,7 +655,7 @@ static string readLine() {
     size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
     return (a == string::npos) ? "" : s.substr(a, b - a + 1);
 }
-static int readInt() {                               
+ int readInt() {                               
     string s = readLine();
     if (s.empty() || s.size() > 6) 
     return -1;
@@ -662,21 +664,21 @@ static int readInt() {
     return -1;
     return atoi(s.c_str());
 }
-static void pauseEnter() { 
+ void pauseEnter() { 
     cout << C_GREY << "\nPress Enter to continue..." << C_RESET << flush; readLine(); 
 }
-static bool confirm(string q) {
+ bool confirm(string q) {
     cout << C_YELLOW << q << " (Y/N): " << C_RESET << flush;
     string s = readLine();
     return _stricmp(s.c_str(), "y") == 0 || _stricmp(s.c_str(), "yes") == 0;
 }
-static void header(const string& title) {
+ void header(const string& title) {
     Term::clearScreen();
     cout << "================================\n"
          << "  " << title << "\n"
          << "================================\n\n";
 }
-static string readPassword(string prompt) {     
+ string readPassword(string prompt) {     
     cout << prompt << flush;
     Term::flushInput();
     string s;
@@ -699,7 +701,7 @@ static string readPassword(string prompt) {
     cout << "\n";
     return s;
 }
-static void printRules() {
+ void printRules() {
     header("RULES & CONTROLS");
     cout <<
         "GOAL\n"
@@ -729,7 +731,7 @@ static void printRules() {
     pauseEnter();
 }
 
-static string boardString(const int b[ROWS][COLS], int headR, int headC) {
+ string boardString(const int b[ROWS][COLS], int headR, int headC) {
     string s = string(C_GREY) + "┌" + rep("─", COLS * 2) + "┐" + C_RESET + "\n";
     for (int r = 0; r < ROWS; r++) {
         s += string(C_GREY) + "│" + C_RESET;
@@ -749,7 +751,7 @@ static string boardString(const int b[ROWS][COLS], int headR, int headC) {
     return s;
 }
 
-static char waitChoice(const char* valid) {           
+ char waitChoice(const char* valid) {           
     while (true) {
         int k = Term::readKey();
         for (const char* v = valid; *v; v++) 
@@ -774,7 +776,7 @@ enum StepResult {
     STEP_OK, STEP_ATE, STEP_COLLIDE 
 };
 
-static int keyToDir(int k) {
+ int keyToDir(int k) {
     switch (k) {
         case K_UP:    case 'w': case 'W': return UP;
         case K_RIGHT: case 'd': case 'D': return RIGHT;
@@ -815,15 +817,15 @@ class Game {
         Graph::reachable(board, snake.headR(), snake.headC(), seen);
         int free = 0;
         for (int i = 0; i < ROWS; i++) 
-        for (int j = 0; j < COLS; j++) 
-        if (seen[i][j] && board[i][j] == EMPTY) 
-        free++;
+            for (int j = 0; j < COLS; j++) 
+                if (seen[i][j] && board[i][j] == EMPTY) 
+                    free++;
         if (free == 0) { 
             foodR = foodC = foodDist = -1; return; 
         }     
         int pick = rand() % free;
         for (int i = 0; i < ROWS; i++) 
-        for (int j = 0; j < COLS; j++) {
+            for (int j = 0; j < COLS; j++) {
             if (!seen[i][j] || board[i][j] != EMPTY) 
             continue;
             if (pick-- == 0) {
@@ -853,7 +855,7 @@ class Game {
             board[tr][tc] = EMPTY; 
         }   
         else if (!eating) 
-        growLeft--;                                       
+            growLeft--;                                       
         grewLast = growing;
         snake.addHead(nr, nc); 
         board[nr][nc] = SNAKE;
@@ -984,7 +986,9 @@ public:
             for (int waited = 0; waited < delay; waited += 5) {
                 int k = Term::readKey();
                 int d = keyToDir(k);
-                if (d >= 0) { if (d != (dir + 2) % 4) newDir = d; }           
+                if (d >= 0) { 
+                    if (d != (dir + 2) % 4) newDir = d; 
+                }           
                 else if (k == 'p' || k == 'P') { 
                     if (pauseMenu()) 
                     return RES_QUIT; 
@@ -996,7 +1000,7 @@ public:
                 Term::sleepMs(5);
             }
             if (newDir >= 0) 
-            dir = newDir;
+                dir = newDir;
             int used = dir;
             int res = step();
             if (msgMs > 0) msgMs -= delay;
@@ -1085,14 +1089,15 @@ public:
                 }
                 if (!m.grew) { 
                     int tr = 0, tc = 0; 
-                    s.removeTail(tr, tc); b[tr][tc] = EMPTY; 
+                    s.removeTail(tr, tc); 
+                    b[tr][tc] = EMPTY; 
                 }
                 s.addHead(nr, nc); b[nr][nc] = SNAKE;
                 if (m.foodR != curFoodR || m.foodC != curFoodC) {
                     curFoodR = m.foodR; 
                     curFoodC = m.foodC;
-                    if (curFoodR >= 0) 
-                    b[curFoodR][curFoodC] = FOOD;
+                        if (curFoodR >= 0) 
+                            b[curFoodR][curFoodC] = FOOD;
                 }
             }
             string note = "";
@@ -1101,7 +1106,7 @@ public:
             for (int w = 0; w < 70 && !stop; w += 10) {
                 int k = Term::readKey();
                 if (k == 'q' || k == 'Q') 
-                stop = true;
+                    stop = true;
                 Term::sleepMs(10);
             }
         }
@@ -1109,7 +1114,7 @@ public:
     }
 };
 
-static void printRecords(GameRecord** arr, int n) {
+ void printRecords(GameRecord** arr, int n) {
     if (n == 0) { 
         cout << "  (no games to show)\n"; 
         return; 
@@ -1125,7 +1130,7 @@ static void printRecords(GameRecord** arr, int n) {
     }
 }
 
-static void printStats(Player* p) {
+ void printStats(Player* p) {
     Stats s = p->stats();
     cout << left << setw(24) << "Games played:" << s.played << "\n"
          << setw(24) << "Games survived:" << s.survived << "\n"
@@ -1137,7 +1142,7 @@ static void printStats(Player* p) {
          << setw(24) << "Total path covered:" << s.totalPath << " moves\n";
 }
 
-static void historyMenu(Player* p) {
+ void historyMenu(Player* p) {
     while (true) {
         header("GAME HISTORY");
         cout << "1. View all games\n2. Filter by difficulty\n3. Filter by minimum score\n"
@@ -1180,7 +1185,7 @@ static void historyMenu(Player* p) {
     }
 }
 
-static void showLeaderboard() {
+ void showLeaderboard() {
     header("LEADERBOARD");
     int n; Player** players = gPlayers.toArray(n);
     LBEntry* e = n ? new LBEntry[n] : nullptr;
@@ -1219,7 +1224,7 @@ static void showLeaderboard() {
     pauseEnter();
 }
 
-static int chooseDifficulty() {
+ int chooseDifficulty() {
     header("SELECT DIFFICULTY");
     const char* names[3] = { "Easy  ", "Medium", "Hard  " };
     for (int i = 0; i < 3; i++)
@@ -1229,7 +1234,7 @@ static int chooseDifficulty() {
     return (c >= 1 && c <= 3) ? c - 1 : -1;
 }
 
-static void playSession(Player* p) {
+ void playSession(Player* p) {
     while (true) {
         int d = chooseDifficulty();
         if (d < 0) return;
@@ -1268,7 +1273,7 @@ static void playSession(Player* p) {
     }
 }
 
-static void playerMenu(Player* p) {
+ void playerMenu(Player* p) {
     while (true) {
         header("WELCOME, " + p->name + "!");
         cout << "1. Play Game\n2. Game History\n3. My Statistics\n4. Leaderboard\n5. Logout\n\nEnter choice: " << flush;
@@ -1289,7 +1294,7 @@ static void playerMenu(Player* p) {
     }
 }
 
-static void playerLogin() {
+ void playerLogin() {
     header("PLAYER LOGIN");
     cout << "Enter your name (letters, digits, _ ; max 15; case-sensitive): " << flush;
     string name = readLine();
@@ -1319,7 +1324,7 @@ static void playerLogin() {
     playerMenu(p);
 }
 
-static Player* lookupPlayer() {
+ Player* lookupPlayer() {
     cout << "Enter player name: " << flush;
     string name = readLine();
     Player* p = gPlayers.find(name);
@@ -1332,7 +1337,7 @@ static Player* lookupPlayer() {
     return nullptr;
 }
 
-static void adminPlayerDetails() {
+ void adminPlayerDetails() {
     header("PLAYER DETAILS");
     Player* p = lookupPlayer();
     if (p) {
@@ -1349,7 +1354,7 @@ static void adminPlayerDetails() {
     pauseEnter();
 }
 
-static void adminDeletePlayer() {
+ void adminDeletePlayer() {
     header("DELETE PLAYER");
     Player* p = lookupPlayer();
     if (p) {
@@ -1365,7 +1370,7 @@ static void adminDeletePlayer() {
     pauseEnter();
 }
 
-static void adminDeleteHistory() {
+ void adminDeleteHistory() {
     header("DELETE GAME HISTORY");
     Player* p = lookupPlayer();
     if (p) {
@@ -1381,7 +1386,7 @@ static void adminDeleteHistory() {
     pauseEnter();
 }
 
-static void adminSystemStats() {
+ void adminSystemStats() {
     header("SYSTEM STATISTICS");
     int n; 
     Player** players = gPlayers.toArray(n);
@@ -1409,7 +1414,7 @@ static void adminSystemStats() {
     pauseEnter();
 }
 
-static void adminMenu() {
+ void adminMenu() {
     while (true) {
         header("ADMIN MENU");
         cout << "1. Leaderboard & Player Statistics\n2. Player Details & History\n"
@@ -1425,7 +1430,7 @@ static void adminMenu() {
     }
 }
 
-static void adminRegister() {
+ void adminRegister() {
     header("REGISTER ADMIN");
     cout << "Username (starts with a capital letter, letters/digits/_ only): " << flush;
     string user = readLine();
@@ -1457,7 +1462,7 @@ static void adminRegister() {
     pauseEnter();
 }
 
-static void adminLogin() {
+ void adminLogin() {
     header("ADMIN LOGIN");
     cout << "Username: " << flush;
     string user = readLine();
@@ -1481,7 +1486,7 @@ static void adminLogin() {
     pauseEnter();
 }
 
-static void adminEntry() {
+ void adminEntry() {
     while (true) {
         header("ADMIN");
         cout << "1. Login\n2. Register new admin\n3. Back\n\nEnter choice: " << flush;
